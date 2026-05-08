@@ -92,7 +92,7 @@ The current task path is classification-oriented. GLUE regression tasks such as 
 
 The stability-aware component currently logs smoothed importance and variance-normalized scores. It does not yet replace PEFT AdaLoRA's internal importance allocator with a custom stability-gated allocator, so treat claims about improved stability as an experimental hypothesis to validate with repeated runs.
 
-## Suggested Experiments
+## Experiments
 
 Run each method over multiple seeds and low-resource budgets, for example 100, 500, 1000, and 5000 samples. Report accuracy, macro F1, convergence speed, final selected rank, and training variance across seeds.
 
