@@ -328,6 +328,10 @@ def estimate_total_steps(train_dataset, batch_size, epochs):
 def main():
     args = parse_args()
     set_seed(args.seed)
+    is_adalora_method = args.method in [
+        "adalora",
+        "dataset_aware_adalora",
+    ]
 
     train_dataset, eval_dataset = load_low_resource_dataset(args)
 
@@ -379,8 +383,9 @@ def main():
         num_train_epochs=args.epochs,
         eval_strategy="epoch",
         save_strategy="epoch",
+        save_total_limit=1,
         logging_steps=20,
-        load_best_model_at_end=True,
+        load_best_model_at_end=not is_adalora_method,
         metric_for_best_model="macro_f1",
         greater_is_better=True,
         report_to="none",
@@ -397,10 +402,7 @@ def main():
     ]:
         callbacks.append(StabilityAwareCallback(output_dir=args.output_dir))
 
-    if args.method in [
-        "adalora",
-        "dataset_aware_adalora",
-    ]:
+    if is_adalora_method:
         callbacks.append(AdaLoraAllocationCallback())
 
     trainer = Trainer(
