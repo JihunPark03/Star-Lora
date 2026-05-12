@@ -202,21 +202,36 @@ def resolve_torch_dtype(dtype_name):
     }[dtype_name]
 
 
-def build_lora_config(rank, target_modules):
+def build_lora_config(
+    rank,
+    target_modules,
+    lora_alpha=None,
+    lora_dropout=0.1,
+):
     return LoraConfig(
         task_type=TaskType.SEQ_CLS,
         r=rank,
-        lora_alpha=rank * 2,
-        lora_dropout=0.1,
+        lora_alpha=lora_alpha or rank * 2,
+        lora_dropout=lora_dropout,
         target_modules=target_modules,
         bias="none",
     )
 
 
-def build_adalora_config(init_rank, target_rank, total_step, target_modules):
-    tinit = max(0, int(0.1 * total_step))
-    tfinal = max(0, int(0.5 * total_step))
-    delta_t = max(1, int(0.02 * total_step))
+def build_adalora_config(
+    init_rank,
+    target_rank,
+    total_step,
+    target_modules,
+    lora_alpha=None,
+    lora_dropout=0.1,
+    tinit_fraction=0.1,
+    tfinal_fraction=0.5,
+    delta_fraction=0.02,
+):
+    tinit = max(0, int(tinit_fraction * total_step))
+    tfinal = max(0, int(tfinal_fraction * total_step))
+    delta_t = max(1, int(delta_fraction * total_step))
 
     if tinit + tfinal >= total_step:
         tinit = 0
@@ -226,8 +241,8 @@ def build_adalora_config(init_rank, target_rank, total_step, target_modules):
         task_type=TaskType.SEQ_CLS,
         init_r=init_rank,
         target_r=target_rank,
-        lora_alpha=target_rank * 2,
-        lora_dropout=0.1,
+        lora_alpha=lora_alpha or target_rank * 2,
+        lora_dropout=lora_dropout,
         target_modules=target_modules,
         tinit=tinit,
         tfinal=tfinal,
@@ -237,6 +252,89 @@ def build_adalora_config(init_rank, target_rank, total_step, target_modules):
         orth_reg_weight=0.5,
         total_step=total_step,
     )
+
+
+def infer_dataset_aware_target_modules(model_name, stats):
+    normalized_name = model_name.lower()
+
+    if "qwen" not in normalized_name:
+        return infer_target_modules(model_name)
+
+    target_modules = [
+        "q_proj",
+        "v_proj",
+    ]
+
+    if stats.label_entropy >= 0.8 or stats.token_sparsity >= 0.6:
+        target_modules.extend(
+            [
+                "k_proj",
+                "o_proj",
+            ]
+        )
+
+    if stats.token_frequency_skew >= 2.0 and stats.num_samples >= 250:
+        target_modules.extend(
+            [
+                "gate_proj",
+                "up_proj",
+                "down_proj",
+            ]
+        )
+
+    ordered_modules = [
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "gate_proj",
+        "up_proj",
+        "down_proj",
+    ]
+
+    return [
+        module
+        for module in ordered_modules
+        if module in set(target_modules)
+    ]
+
+
+def build_dataset_aware_adalora_settings(args, stats):
+    target_modules = (
+        args.target_modules
+        or infer_dataset_aware_target_modules(args.model_name, stats)
+    )
+
+    rank = compute_dataset_aware_rank(
+        stats=stats,
+        base_rank=args.base_rank,
+        min_rank=4,
+        max_rank=48,
+    )
+
+    init_rank = max(rank + 8, rank * 2)
+    lora_alpha = max(rank * 4, args.base_rank * 2)
+
+    dropout = 0.05
+
+    if stats.num_samples < 1000:
+        dropout += 0.05
+
+    if stats.class_imbalance > 0.2 or stats.token_sparsity > 0.6:
+        dropout += 0.05
+
+    lora_dropout = min(dropout, 0.2)
+
+    return {
+        "rank": rank,
+        "init_rank": init_rank,
+        "target_modules": target_modules,
+        "lora_alpha": lora_alpha,
+        "lora_dropout": lora_dropout,
+        "tinit_fraction": 0.2,
+        "tfinal_fraction": 0.85,
+        "delta_fraction": 0.05,
+    }
 
 
 def build_model(args, num_labels, train_dataset, tokenizer, total_step):
@@ -301,26 +399,35 @@ def build_model(args, num_labels, train_dataset, tokenizer, total_step):
             label_column=args.label_column,
         )
 
-        rank = compute_dataset_aware_rank(
-            stats=stats,
-            base_rank=args.base_rank,
-            min_rank=2,
-            max_rank=32,
-        )
-
-        init_rank = max(rank + 4, 4)
+        settings = build_dataset_aware_adalora_settings(args, stats)
+        rank = settings["rank"]
+        init_rank = settings["init_rank"]
+        target_modules = settings["target_modules"]
 
         config = build_adalora_config(
             init_rank=init_rank,
             target_rank=rank,
             total_step=total_step,
             target_modules=target_modules,
+            lora_alpha=settings["lora_alpha"],
+            lora_dropout=settings["lora_dropout"],
+            tinit_fraction=settings["tinit_fraction"],
+            tfinal_fraction=settings["tfinal_fraction"],
+            delta_fraction=settings["delta_fraction"],
         )
 
         model = get_peft_model(model, config)
 
         experiment_info["rank"] = rank
         experiment_info["init_rank"] = init_rank
+        experiment_info["target_modules"] = target_modules
+        experiment_info["lora_alpha"] = settings["lora_alpha"]
+        experiment_info["lora_dropout"] = settings["lora_dropout"]
+        experiment_info["adalora_schedule"] = {
+            "tinit_fraction": settings["tinit_fraction"],
+            "tfinal_fraction": settings["tfinal_fraction"],
+            "delta_fraction": settings["delta_fraction"],
+        }
         experiment_info["dataset_stats"] = stats.to_dict()
         experiment_info["trainable_type"] = "dataset_aware_adalora"
 

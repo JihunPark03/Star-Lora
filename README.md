@@ -4,7 +4,7 @@ This repository contains an experimental low-resource fine-tuning script for seq
 
 The proposed method extends AdaLoRA in two ways:
 
-- Dataset-aware rank selection: before training, the dataset is profiled for sample count, label imbalance, token sparsity, token-frequency skew, label entropy, and input-embedding variance. These statistics are combined into a target rank.
+- Dataset-aware adapter selection: before training, the dataset is profiled for sample count, label imbalance, token sparsity, token-frequency skew, label entropy, and input-embedding variance. These statistics control the target rank, initial rank, LoRA alpha, dropout, AdaLoRA schedule, and which Qwen projection modules receive adapters.
 - Stability-aware monitoring: during training, LoRA parameter importance is logged with an exponential moving average and variance normalization so rank-adjustment behavior can be inspected for noisy or unstable updates.
 
 ## Project Files
@@ -22,7 +22,7 @@ The proposed method extends AdaLoRA in two ways:
 - `full`: updates all model parameters.
 - `lora`: uses fixed-rank LoRA.
 - `adalora`: uses PEFT AdaLoRA with the provided base rank as the target rank.
-- `dataset_aware_adalora`: computes a dataset-aware target rank, then runs AdaLoRA with that target rank.
+- `dataset_aware_adalora`: computes dataset-aware adapter settings, then runs AdaLoRA with those settings. For Qwen, complex or sparse datasets can expand beyond `q_proj`/`v_proj` into `k_proj`, `o_proj`, and MLP projections.
 
 For AdaLoRA methods, the training schedule is estimated from `num_train_examples / batch_size * epochs` and passed to PEFT as `total_step`.
 
@@ -87,7 +87,7 @@ Each run writes:
 
 ## Important Notes
 
-This implementation is a research prototype. The default model is `Qwen/Qwen2.5-0.5B`, and Qwen LoRA runs target the `q_proj` and `v_proj` attention projections. DistilBERT-style models use `q_lin` and `v_lin`, which are selected automatically when the model name contains `distilbert`. For other model families, pass `--target_modules` with the attention projection module names used by that architecture.
+This implementation is a research prototype. The default model is `Qwen/Qwen2.5-0.5B`. Standard Qwen LoRA and AdaLoRA runs target `q_proj` and `v_proj`; `dataset_aware_adalora` can expand the adapter surface to `k_proj`, `o_proj`, `gate_proj`, `up_proj`, and `down_proj` when dataset statistics indicate high entropy, sparsity, or token skew. DistilBERT-style models use `q_lin` and `v_lin`, which are selected automatically when the model name contains `distilbert`. For other model families, pass `--target_modules` with the projection module names used by that architecture.
 
 The current task path is classification-oriented. GLUE regression tasks such as STS-B are not supported without changing the label handling, model problem type, and metrics.
 
@@ -115,8 +115,8 @@ For a quicker pilot run:
 ```bash
 python run_experiments.py \
   --methods full lora adalora dataset_aware_adalora \
-  --sample_budgets 100 \
-  --seeds 13 \
+  --sample_budgets 100 500 1000 5000 \
+  --seeds 13 21 42 \
   --torch_dtype float32 \
   --epochs 3 \
   --lr 1e-4 \
