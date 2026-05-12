@@ -40,11 +40,11 @@ The current workspace already contains a `venv`, but the commands above document
 
 ## Quick Start
 
-Run the dataset-aware AdaLoRA method on a low-resource SST-2 subset:
+Run the dataset-aware AdaLoRA method with Qwen2.5 0.5B on a low-resource SST-2 subset:
 
 ```bash
 python train.py \
-  --model_name distilbert-base-uncased \
+  --model_name Qwen/Qwen2.5-0.5B \
   --dataset_name glue \
   --dataset_config sst2 \
   --text_column sentence \
@@ -52,6 +52,7 @@ python train.py \
   --num_samples 1000 \
   --method dataset_aware_adalora \
   --base_rank 8 \
+  --torch_dtype float32 \
   --epochs 3 \
   --batch_size 8 \
   --lr 2e-5 \
@@ -86,7 +87,7 @@ Each run writes:
 
 ## Important Notes
 
-This implementation is a research prototype. It should run for DistilBERT-style sequence classification models whose attention projection module names are `q_lin` and `v_lin`. Other model families often use names like `query`/`value` or `q_proj`/`v_proj`; update `target_modules` in `train.py` before using those models.
+This implementation is a research prototype. The default model is `Qwen/Qwen2.5-0.5B`, and Qwen LoRA runs target the `q_proj` and `v_proj` attention projections. DistilBERT-style models use `q_lin` and `v_lin`, which are selected automatically when the model name contains `distilbert`. For other model families, pass `--target_modules` with the attention projection module names used by that architecture.
 
 The current task path is classification-oriented. GLUE regression tasks such as STS-B are not supported without changing the label handling, model problem type, and metrics.
 
@@ -103,6 +104,7 @@ python run_experiments.py \
   --methods full lora adalora dataset_aware_adalora \
   --sample_budgets 100 500 1000 5000 \
   --seeds 13 21 42 \
+  --torch_dtype float32 \
   --epochs 3 \
   --batch_size 8 \
   --output_root ./outputs/sweeps
@@ -112,10 +114,12 @@ For a quicker pilot run:
 
 ```bash
 python run_experiments.py \
-  --methods lora adalora dataset_aware_adalora \
+  --methods full lora adalora dataset_aware_adalora \
   --sample_budgets 100 \
   --seeds 13 \
-  --epochs 1 \
+  --torch_dtype float32 \
+  --epochs 3 \
+  --lr 1e-4 \
   --output_root ./outputs/pilot
 ```
 

@@ -117,7 +117,7 @@ def compute_embedding_variance(
             embeddings = model.get_input_embeddings()(input_ids)
 
             pooled_embedding = embeddings.mean(dim=1).squeeze(0)
-            vectors.append(pooled_embedding.detach().cpu().numpy())
+            vectors.append(pooled_embedding.detach().float().cpu().numpy())
 
     if len(vectors) == 0:
         return 0.0

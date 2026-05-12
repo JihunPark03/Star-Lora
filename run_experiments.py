@@ -18,6 +18,7 @@ DEFAULT_METHODS = [
 
 DEFAULT_SAMPLE_BUDGETS = [100, 500, 1000, 5000]
 DEFAULT_SEEDS = [13, 21, 42]
+DEFAULT_MODEL_NAME = "Qwen/Qwen2.5-0.5B"
 PROJECT_DIR = Path(__file__).resolve().parent
 
 
@@ -26,7 +27,7 @@ def parse_args():
         description="Run low-resource LoRA/AdaLoRA sweeps and summarize results."
     )
 
-    parser.add_argument("--model_name", type=str, default="distilbert-base-uncased")
+    parser.add_argument("--model_name", type=str, default=DEFAULT_MODEL_NAME)
     parser.add_argument("--dataset_name", type=str, default="glue")
     parser.add_argument("--dataset_config", type=str, default="sst2")
     parser.add_argument("--text_column", type=str, default="sentence")
@@ -35,6 +36,11 @@ def parse_args():
     parser.add_argument("--sample_budgets", nargs="+", type=int, default=DEFAULT_SAMPLE_BUDGETS)
     parser.add_argument("--seeds", nargs="+", type=int, default=DEFAULT_SEEDS)
     parser.add_argument("--base_rank", type=int, default=8)
+    parser.add_argument(
+        "--torch_dtype",
+        choices=["float32", "float16", "bfloat16"],
+        default="float32",
+    )
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--lr", type=float, default=2e-5)
@@ -79,6 +85,8 @@ def build_command(args, method, sample_budget, seed, output_dir):
         method,
         "--base_rank",
         str(args.base_rank),
+        "--torch_dtype",
+        args.torch_dtype,
         "--epochs",
         str(args.epochs),
         "--batch_size",

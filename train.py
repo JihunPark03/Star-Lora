@@ -5,6 +5,7 @@ import os
 
 import evaluate
 import numpy as np
+import torch
 from datasets import load_dataset
 from peft import (
     AdaLoraConfig,
@@ -26,13 +27,16 @@ from rank_policy import compute_dataset_aware_rank
 from stability_callback import AdaLoraAllocationCallback, StabilityAwareCallback
 
 
+DEFAULT_MODEL_NAME = "Qwen/Qwen2.5-0.5B"
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
         "--model_name",
         type=str,
-        default="distilbert-base-uncased",
+        default=DEFAULT_MODEL_NAME,
     )
 
     parser.add_argument(
@@ -81,6 +85,25 @@ def parse_args():
         "--base_rank",
         type=int,
         default=8,
+    )
+
+    parser.add_argument(
+        "--target_modules",
+        nargs="+",
+        default=None,
+        help="LoRA target module names. Defaults are inferred from the model name.",
+    )
+
+    parser.add_argument(
+        "--torch_dtype",
+        type=str,
+        choices=[
+            "float32",
+            "float16",
+            "bfloat16",
+        ],
+        default="float32",
+        help="Model loading dtype. Qwen sequence classification uses float32 by default to avoid BF16 NaNs.",
     )
 
     parser.add_argument(
@@ -159,18 +182,38 @@ def tokenize_dataset(dataset, tokenizer, text_column):
     )
 
 
-def build_lora_config(rank):
+def infer_target_modules(model_name):
+    normalized_name = model_name.lower()
+
+    if "qwen" in normalized_name:
+        return ["q_proj", "v_proj"]
+
+    if "distilbert" in normalized_name:
+        return ["q_lin", "v_lin"]
+
+    return ["q_proj", "v_proj"]
+
+
+def resolve_torch_dtype(dtype_name):
+    return {
+        "float32": torch.float32,
+        "float16": torch.float16,
+        "bfloat16": torch.bfloat16,
+    }[dtype_name]
+
+
+def build_lora_config(rank, target_modules):
     return LoraConfig(
         task_type=TaskType.SEQ_CLS,
         r=rank,
         lora_alpha=rank * 2,
         lora_dropout=0.1,
-        target_modules=["q_lin", "v_lin"],
+        target_modules=target_modules,
         bias="none",
     )
 
 
-def build_adalora_config(init_rank, target_rank, total_step):
+def build_adalora_config(init_rank, target_rank, total_step, target_modules):
     tinit = max(0, int(0.1 * total_step))
     tfinal = max(0, int(0.5 * total_step))
     delta_t = max(1, int(0.02 * total_step))
@@ -185,7 +228,7 @@ def build_adalora_config(init_rank, target_rank, total_step):
         target_r=target_rank,
         lora_alpha=target_rank * 2,
         lora_dropout=0.1,
-        target_modules=["q_lin", "v_lin"],
+        target_modules=target_modules,
         tinit=tinit,
         tfinal=tfinal,
         deltaT=delta_t,
@@ -197,14 +240,22 @@ def build_adalora_config(init_rank, target_rank, total_step):
 
 
 def build_model(args, num_labels, train_dataset, tokenizer, total_step):
+    target_modules = args.target_modules or infer_target_modules(args.model_name)
+
     model = AutoModelForSequenceClassification.from_pretrained(
         args.model_name,
         num_labels=num_labels,
+        dtype=resolve_torch_dtype(args.torch_dtype),
     )
+
+    if tokenizer.pad_token_id is not None and model.config.pad_token_id is None:
+        model.config.pad_token_id = tokenizer.pad_token_id
 
     experiment_info = {
         "method": args.method,
         "base_rank": args.base_rank,
+        "target_modules": target_modules,
+        "torch_dtype": args.torch_dtype,
     }
 
     if args.method == "full":
@@ -213,7 +264,7 @@ def build_model(args, num_labels, train_dataset, tokenizer, total_step):
 
     if args.method == "lora":
         rank = args.base_rank
-        config = build_lora_config(rank)
+        config = build_lora_config(rank, target_modules)
 
         model = get_peft_model(model, config)
 
@@ -230,6 +281,7 @@ def build_model(args, num_labels, train_dataset, tokenizer, total_step):
             init_rank=init_rank,
             target_rank=rank,
             total_step=total_step,
+            target_modules=target_modules,
         )
 
         model = get_peft_model(model, config)
@@ -262,6 +314,7 @@ def build_model(args, num_labels, train_dataset, tokenizer, total_step):
             init_rank=init_rank,
             target_rank=rank,
             total_step=total_step,
+            target_modules=target_modules,
         )
 
         model = get_peft_model(model, config)
@@ -337,6 +390,9 @@ def main():
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
 
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
     total_step = estimate_total_steps(
         train_dataset=train_dataset,
         batch_size=args.batch_size,
@@ -382,10 +438,9 @@ def main():
         per_device_eval_batch_size=args.batch_size,
         num_train_epochs=args.epochs,
         eval_strategy="epoch",
-        save_strategy="epoch",
-        save_total_limit=1,
+        save_strategy="no",
         logging_steps=20,
-        load_best_model_at_end=not is_adalora_method,
+        load_best_model_at_end=False,
         metric_for_best_model="macro_f1",
         greater_is_better=True,
         report_to="none",
