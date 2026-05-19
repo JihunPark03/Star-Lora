@@ -76,6 +76,7 @@ def parse_args():
             "lora",
             "adalora",
             "dataset_aware_adalora",
+            "dataset_aware_layerwise_adalora",
             "full",
         ],
         default="dataset_aware_adalora",
@@ -299,6 +300,94 @@ def infer_dataset_aware_target_modules(model_name, stats):
     ]
 
 
+def get_layer_index(module_name):
+    parts = module_name.split(".")
+
+    for index, part in enumerate(parts[:-1]):
+        if part == "layers" and parts[index + 1].isdigit():
+            return int(parts[index + 1])
+
+    return None
+
+
+def module_leaf_name(module_name):
+    return module_name.rsplit(".", 1)[-1]
+
+
+def infer_dataset_aware_layerwise_target_modules(model, model_name, stats):
+    normalized_name = model_name.lower()
+
+    if "qwen" not in normalized_name:
+        return infer_dataset_aware_target_modules(model_name, stats), None
+
+    module_names_by_layer = {}
+    candidate_modules = {
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "gate_proj",
+        "up_proj",
+        "down_proj",
+    }
+
+    for module_name, _module in model.named_modules():
+        layer_index = get_layer_index(module_name)
+
+        if layer_index is None:
+            continue
+
+        leaf_name = module_leaf_name(module_name)
+
+        if leaf_name not in candidate_modules:
+            continue
+
+        module_names_by_layer.setdefault(layer_index, {})[leaf_name] = module_name
+
+    layer_indices = sorted(module_names_by_layer)
+
+    if len(layer_indices) == 0:
+        return infer_dataset_aware_target_modules(model_name, stats), None
+
+    complex_attention_layers = set()
+    mlp_layers = set()
+
+    if stats.label_entropy >= 0.8 or stats.token_sparsity >= 0.6:
+        start_index = len(layer_indices) // 2
+        complex_attention_layers = set(layer_indices[start_index:])
+
+    if stats.token_frequency_skew >= 2.0 and stats.num_samples >= 250:
+        start_index = (len(layer_indices) * 2) // 3
+        mlp_layers = set(layer_indices[start_index:])
+
+    target_modules = []
+    layerwise_target_modules = {}
+
+    for layer_index in layer_indices:
+        layer_modules = ["q_proj", "v_proj"]
+
+        if layer_index in complex_attention_layers:
+            layer_modules.extend(["k_proj", "o_proj"])
+
+        if layer_index in mlp_layers:
+            layer_modules.extend(["gate_proj", "up_proj", "down_proj"])
+
+        selected_modules = []
+
+        for leaf_name in layer_modules:
+            module_name = module_names_by_layer[layer_index].get(leaf_name)
+
+            if module_name is None:
+                continue
+
+            target_modules.append(module_name)
+            selected_modules.append(leaf_name)
+
+        layerwise_target_modules[str(layer_index)] = selected_modules
+
+    return target_modules, layerwise_target_modules
+
+
 def build_dataset_aware_adalora_settings(args, stats):
     target_modules = (
         args.target_modules
@@ -335,6 +424,25 @@ def build_dataset_aware_adalora_settings(args, stats):
         "tfinal_fraction": 0.85,
         "delta_fraction": 0.05,
     }
+
+
+def build_dataset_aware_layerwise_adalora_settings(args, model, stats):
+    settings = build_dataset_aware_adalora_settings(args, stats)
+
+    if args.target_modules:
+        settings["layerwise_target_modules"] = None
+        return settings
+
+    target_modules, layerwise_target_modules = infer_dataset_aware_layerwise_target_modules(
+        model=model,
+        model_name=args.model_name,
+        stats=stats,
+    )
+
+    settings["target_modules"] = target_modules
+    settings["layerwise_target_modules"] = layerwise_target_modules
+
+    return settings
 
 
 def build_model(args, num_labels, train_dataset, tokenizer, total_step):
@@ -405,10 +513,10 @@ def build_model(args, num_labels, train_dataset, tokenizer, total_step):
         target_modules = settings["target_modules"]
 
         config = build_adalora_config(
-            init_rank=init_rank,
-            target_rank=rank,
+            init_rank=settings["init_rank"],
+            target_rank=settings["rank"],
             total_step=total_step,
-            target_modules=target_modules,
+            target_modules=settings["target_modules"],
             lora_alpha=settings["lora_alpha"],
             lora_dropout=settings["lora_dropout"],
             tinit_fraction=settings["tinit_fraction"],
@@ -430,6 +538,55 @@ def build_model(args, num_labels, train_dataset, tokenizer, total_step):
         }
         experiment_info["dataset_stats"] = stats.to_dict()
         experiment_info["trainable_type"] = "dataset_aware_adalora"
+
+        return model, experiment_info
+
+
+    if args.method == "dataset_aware_layerwise_adalora":
+        stats = analyze_dataset(
+            dataset=train_dataset,
+            tokenizer=tokenizer,
+            model=model,
+            text_column=args.text_column,
+            label_column=args.label_column,
+        )
+
+        settings = build_dataset_aware_layerwise_adalora_settings(
+            args=args,
+            model=model,
+            stats=stats,
+        )
+        rank = settings["rank"]
+        init_rank = settings["init_rank"]
+        target_modules = settings["target_modules"]
+
+        config = build_adalora_config(
+            init_rank=init_rank,
+            target_rank=rank,
+            total_step=total_step,
+            target_modules=target_modules,
+            lora_alpha=settings["lora_alpha"],
+            lora_dropout=settings["lora_dropout"],
+            tinit_fraction=settings["tinit_fraction"],
+            tfinal_fraction=settings["tfinal_fraction"],
+            delta_fraction=settings["delta_fraction"],
+        )
+
+        model = get_peft_model(model, config)
+
+        experiment_info["rank"] = rank
+        experiment_info["init_rank"] = init_rank
+        experiment_info["target_modules"] = target_modules
+        experiment_info["layerwise_target_modules"] = settings["layerwise_target_modules"]
+        experiment_info["lora_alpha"] = settings["lora_alpha"]
+        experiment_info["lora_dropout"] = settings["lora_dropout"]
+        experiment_info["adalora_schedule"] = {
+            "tinit_fraction": settings["tinit_fraction"],
+            "tfinal_fraction": settings["tfinal_fraction"],
+            "delta_fraction": settings["delta_fraction"],
+        }
+        experiment_info["dataset_stats"] = stats.to_dict()
+        experiment_info["trainable_type"] = "dataset_aware_layerwise_adalora"
 
         return model, experiment_info
 
@@ -491,6 +648,7 @@ def main():
     is_adalora_method = args.method in [
         "adalora",
         "dataset_aware_adalora",
+        "dataset_aware_layerwise_adalora",
     ]
 
     train_dataset, eval_dataset = load_low_resource_dataset(args)
@@ -561,6 +719,7 @@ def main():
         "lora",
         "adalora",
         "dataset_aware_adalora",
+        "dataset_aware_layerwise_adalora",
     ]:
         callbacks.append(StabilityAwareCallback(output_dir=args.output_dir))
 

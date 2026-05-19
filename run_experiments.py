@@ -14,6 +14,7 @@ DEFAULT_METHODS = [
     "lora",
     "adalora",
     "dataset_aware_adalora",
+    "dataset_aware_layerwise_adalora",
 ]
 
 DEFAULT_SAMPLE_BUDGETS = [100, 500, 1000, 5000]
