@@ -1,0 +1,63 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{kasailab_math}
+\typeout{Document Style `kasailab_math' - environment}
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\usepackage{amsthm}
+
+\def\vec#1{\mbox{\boldmath $#1$}}
+\def\vx{\vec{x}}
+\def\vy{\vec{y}}
+\def\vz{\vec{z}}
+\def\va{\vec{a}}
+\def\vb{\vec{b}}
+\def\vc{\vec{c}}
+\def\vd{\vec{d}}
+\def\ve{\vec{e}}
+\def\vf{\vec{f}}
+\def\vg{\vec{g}}
+\def\vu{\vec{u}}
+\def\vv{\vec{v}}
+\def\vr{\vec{r}}
+\def\vw{\vec{w}}
+\def\vlam{\vec{\lambda}}
+\def\vmu{\vec{\mu}}
+\def\vnu{\vec{\nu}}
+
+\def\mat#1{\mbox{\bf #1}}
+\def\norm#1{\mbox{$\left\|#1\right\|$}}
+\def\L#1{\mbox{$\ell_{#1}$}}
+\DeclareMathAlphabet\mathbfcal{OMS}{cmsy}{b}{d}
+
+\renewcommand{\min}{\mathop{\rm minimize}\limits}
+\renewcommand{\max}{\mathop{\rm maximize}\limits}
+\newcommand{\argmax}{\mathop{\rm arg~max}\limits}
+\newcommand{\argmin}{\mathop{\rm arg~min}\limits}
+\newcommand{\defmax}{\mathop{\rm max}\limits}
+\newcommand{\defmin}{\mathop{\rm min}\limits}
+
+\def\R{\mbox{$\mathbb{R}$} }
+\def\E{\mbox{$\mathbb{E}$} }
+\def\V{\mbox{$\mathbb{V}$} }
+\def\W{\mbox{$\mathbb{W}$} }
+\def\K{\mbox{$\mathbb{K}$} }
+\def\S{\mbox{$\mathbb{S}$} }
+\def\C{\mbox{$\mathcal{C}$} }
+
+\newcommand{\gradf}{{\rm grad} f}
+\newcommand{\hessf}{{\rm Hess} f}
+\newcommand{\gradh}{{\rm grad} h}
+\newcommand{\hessh}{{\rm Hess} h}
+\newcommand{\grad}{{\rm grad}}
+
+\usepackage{algorithmic,algorithm}
+
+\newtheorem{Def}{Definition}[section]
+\newtheorem{Thm}[Def]{Theorem}
+\newtheorem{Cor}[Def]{Corollary}
+\newtheorem{Lem}[Def]{Lemma}
+\newtheorem{Prop}[Def]{Proposition}
+\newtheorem{Ex}[Def]{Example}
+\newtheorem{Remark}[Def]{Remark}

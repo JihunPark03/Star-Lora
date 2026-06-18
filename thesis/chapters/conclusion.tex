@@ -1,0 +1,75 @@
+\chapter{Conclusion and Future Work}
+\label{chap:conclusion}
+
+\section{Conclusion}
+
+This thesis began with a practical tension. LoRA is simple and effective, but its rank and target
+modules are fixed without reference to the downstream dataset. AdaLoRA makes allocation dynamic,
+but adds schedule choices and relies on importance estimates during training. Star-LoRA explores a
+middle path: use transparent dataset statistics to establish an allocation prior, then use
+AdaLoRA for training.
+
+The prototype measures dataset size, class imbalance, label entropy, token sparsity,
+token-frequency skew, and embedding variance. These statistics control target rank, initial rank,
+scaling, dropout, and adapter targets. The method also records a variance-normalized importance
+score, although it does not yet use that score for allocation.
+
+On Qwen2.5-0.5B and SST-2, Star-LoRA improves standard AdaLoRA most clearly at 1,000 and 5,000
+examples. At 5,000 examples it reaches 91.55\% accuracy in the primary sweep, 4.97 percentage
+points above AdaLoRA and slightly above LoRA. The selected rank increases with data volume, showing
+that the policy responds as intended. However, fixed-rank LoRA remains stronger at several budgets
+and is far faster. Star-LoRA's expanded adapter surface imposes a substantial cost.
+
+The exploratory LLM-assisted policy does not improve accuracy. Claude produces a faster but weaker
+layer layout, while Gemini requests fail and fall back to the heuristic. This result clarifies that
+architectural suggestions without measured task feedback are insufficient for reliable allocation.
+
+The appropriate conclusion is conditional. Dataset-aware configuration is a promising way to
+improve AdaLoRA and reduce one-size-fits-all rank selection. The current evidence does not show
+universal superiority over LoRA, and the method needs compute-aware design and controlled
+ablations before stronger claims are justified.
+
+\section{Future Work}
+
+\subsection{Stability-Gated Allocation}
+
+The most direct extension is to connect \cref{eq:stable-importance} to pruning. Components could be
+eligible for removal only when their stable importance remains low for several intervals. Another
+option is to blend PEFT's score with the normalized score:
+\begin{equation}
+  I^{\mathrm{combined}} =
+  \lambda I^{\mathrm{PEFT}} +
+  (1-\lambda)\widetilde{S}.
+\end{equation}
+This must be tested carefully because variance normalization can exaggerate parameters with very
+small variance.
+
+\subsection{Learned Dataset-to-Policy Mapping}
+
+After collecting results from many datasets and ranks, a small regression or ranking model could
+predict rank and module utility from profile features. Unlike the current hand-coded coefficients,
+the controller could be trained against measured validation performance and constrained by cost.
+
+\subsection{Cross-Task Evaluation}
+
+Future experiments should include sentiment and topic classification, natural language inference,
+imbalanced multi-class data, token classification, and generation. At least two model families and
+multiple model scales are needed to evaluate whether the policy generalizes.
+
+\subsection{Better Extreme-Low-Resource Behavior}
+
+The policy could include a minimum-step rule. If the estimated training horizon is too short,
+Star-LoRA could choose fixed LoRA instead of AdaLoRA. A meta-policy that selects among full
+fine-tuning, LoRA, and AdaLoRA may be more useful than forcing one method into every regime.
+
+\subsection{Compute-Aware Search}
+
+Rank and module selection should be evaluated under equal parameter or runtime budgets. The policy
+could estimate the parameter count of each candidate module and select the highest-value set under
+a budget. Latency-aware objectives would make the method more relevant to deployment.
+
+\subsection{Reproducibility Improvements}
+
+Every future run should serialize all command-line arguments, package and CUDA versions, GPU model
+and memory, git commit hash, dataset revision, trainable parameter count, profiling time, and peak
+memory. These additions are inexpensive and would substantially strengthen subsequent analysis.

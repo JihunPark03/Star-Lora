@@ -1,0 +1,217 @@
+\chapter{Proposed Method: Star-LoRA}
+\label{chap:method}
+
+\section{Overview}
+
+Star-LoRA contains four stages:
+\begin{enumerate}
+  \item load the pretrained model and a low-resource training subset;
+  \item compute a compact dataset profile;
+  \item map the profile to rank, regularization, schedule, and target modules;
+  \item train with AdaLoRA while logging raw and stability-normalized importance.
+\end{enumerate}
+
+\begin{figure}[H]
+  \centering
+  \fbox{\begin{minipage}{0.88\textwidth}
+  \centering
+  \textbf{Dataset} $\longrightarrow$
+  \textbf{Profiler} $\longrightarrow$
+  \textbf{Rank and Module Policy} $\longrightarrow$
+  \textbf{AdaLoRA Training}\\[0.8em]
+  \hfill $\searrow$ \hspace{2em}
+  \textbf{Stability Log} $\longrightarrow$ \textbf{Analysis}
+  \end{minipage}}
+  \caption{Conceptual Star-LoRA pipeline. Dataset-aware settings are selected before training;
+  stability scores are recorded during training.}
+  \label{fig:pipeline}
+\end{figure}
+
+\section{Dataset Profile}
+
+\subsection{Sample Count}
+
+The first statistic is $z_N=N=|\mathcal{D}|$. Token statistics are estimated using at most 1,000
+examples to bound profiling cost, and embedding variance uses at most 256 examples.
+
+\subsection{Class Imbalance}
+
+For class counts $\{n_c\}_{c=1}^{C}$, imbalance is defined as
+\begin{equation}
+  z_{\mathrm{imb}} =
+  1 - \frac{\defmin_c n_c}{\defmax_c n_c + \epsilon}.
+  \label{eq:imbalance}
+\end{equation}
+A balanced dataset has a value near zero. A value near one indicates a severe difference between
+the smallest and largest classes.
+
+\subsection{Normalized Label Entropy}
+
+With class probabilities $p_c=n_c/N$, normalized entropy is
+\begin{equation}
+  z_H =
+  \frac{-\sum_{c=1}^{C} p_c \log(p_c+\epsilon)}
+       {\log(C+\epsilon)}.
+  \label{eq:entropy}
+\end{equation}
+This quantity lies approximately in $[0,1]$. It is close to one when the class distribution is
+uniform.
+
+\subsection{Token Sparsity and Frequency Skew}
+
+After tokenization, let $f_j$ be the frequency of token type $j$ in the profiling subset.
+Token sparsity is
+\begin{equation}
+  z_{\mathrm{sparse}} =
+  \frac{1}{V}\sum_{j=1}^{V}\mathbf{1}[f_j \le 1],
+  \label{eq:sparsity}
+\end{equation}
+where $V$ is the number of observed token types. Frequency skew is represented by the coefficient
+of variation:
+\begin{equation}
+  z_{\mathrm{skew}} =
+  \frac{\operatorname{std}(f)}
+       {\operatorname{mean}(f)+\epsilon}.
+  \label{eq:token-skew}
+\end{equation}
+
+\subsection{Embedding Variance}
+
+For each sampled input, the prototype obtains input-token embeddings from the pretrained model and
+mean-pools them into vector $e_i$. It computes
+\begin{equation}
+  z_{\mathrm{emb}} =
+  \frac{1}{d}\sum_{k=1}^{d}
+  \operatorname{Var}_i(e_{i,k}).
+  \label{eq:embedding-variance}
+\end{equation}
+This is a model-dependent proxy for variation in the input representation space, not a semantic
+complexity guarantee.
+
+\section{Dataset-Aware Rank Policy}
+
+The target rank combines size, distribution, and complexity factors:
+\begin{equation}
+  r^* =
+  \operatorname{clip}\left(
+  \operatorname{round}
+  \left[
+  r_0 f_{\mathrm{size}}g_{\mathrm{dist}}g_{\mathrm{comp}}
+  \right],
+  r_{\min},r_{\max}
+  \right).
+  \label{eq:rank-policy}
+\end{equation}
+In the experiments, $r_0=8$, $r_{\min}=4$, and $r_{\max}=48$.
+
+The size factor is
+\begin{equation}
+  f_{\mathrm{size}} =
+  \operatorname{clip}\left(
+  \frac{\log(1+N)}{\log(1+5000)},0.3,1.5
+  \right).
+  \label{eq:size-factor}
+\end{equation}
+The distribution factor is
+\begin{align}
+  p_{\mathrm{dist}} &=
+  0.5z_{\mathrm{imb}}+
+  0.3z_{\mathrm{sparse}}+
+  0.2\defmin(z_{\mathrm{skew}},1),\\
+  g_{\mathrm{dist}} &=
+  \operatorname{clip}(1-0.5p_{\mathrm{dist}},0.5,1.0).
+  \label{eq:distribution-factor}
+\end{align}
+The complexity factor is
+\begin{equation}
+  g_{\mathrm{comp}} =
+  \operatorname{clip}
+  \left(
+  1+0.5z_H+0.3\defmin(z_{\mathrm{emb}},1),
+  1,2
+  \right).
+  \label{eq:complexity-factor}
+\end{equation}
+These coefficients are heuristics rather than learned values. Their main advantage is
+transparency: the effect of each statistic can be inspected or removed in an ablation.
+
+\section{Initial Rank, Scaling, and Dropout}
+
+The prototype chooses
+\begin{align}
+  r_{\mathrm{init}} &= \defmax(r^*+8,2r^*),\\
+  \alpha &= \defmax(4r^*,2r_0).
+\end{align}
+Dropout begins at $0.05$, increases by $0.05$ when $N<1000$, and increases by another $0.05$ when
+$z_{\mathrm{imb}}>0.2$ or $z_{\mathrm{sparse}}>0.6$. It is capped at $0.2$.
+
+\section{Dataset-Aware Module Selection}
+
+For Qwen models, the default targets are
+\[
+  \mathcal{M}_0=\{\texttt{q\_proj},\texttt{v\_proj}\}.
+\]
+If $z_H\ge 0.8$ or $z_{\mathrm{sparse}}\ge 0.6$, key and output projections are added. If
+$z_{\mathrm{skew}}\ge 2.0$ and $N\ge 250$, the MLP gate, up, and down projections are also added.
+This rule explains much of the runtime behavior in the results: standard LoRA and AdaLoRA adapt
+two projection families, while Star-LoRA may adapt seven.
+
+\section{Layer-Wise Variant}
+
+The layer-wise heuristic always places query and value adapters in every Transformer layer. When
+the complexity condition is active, key and output adapters are added only to the upper half of
+the layers. When the MLP condition is active, MLP adapters are added only to the upper third.
+The goal is to retain some additional capacity while reducing the cost of global expansion.
+
+\section{Stability-Aware Monitoring}
+
+For trainable LoRA parameter $\theta$, raw importance at step $t$ is
+\begin{equation}
+  I_t(\theta)=
+  \operatorname{mean}\left|
+  \theta_t\odot\nabla_{\theta_t}\mathcal{L}_t
+  \right|.
+  \label{eq:raw-importance}
+\end{equation}
+The monitor maintains
+\begin{align}
+  \mu_t &= \beta\mu_{t-1}+(1-\beta)I_t,\\
+  v_t &= \beta v_{t-1}+(1-\beta)(I_t-\mu_{t-1})^2,
+\end{align}
+and reports
+\begin{equation}
+  S_t = \frac{\mu_t}{\sqrt{v_t}+\epsilon}.
+  \label{eq:stable-importance}
+\end{equation}
+The implementation uses $\beta=0.9$. The score is logged for analysis and does not replace PEFT's
+internal allocator.
+
+\section{Algorithm and Cost}
+
+\begin{lstlisting}[language=Python,caption={High-level Star-LoRA procedure.},label={lst:algorithm}]
+def star_lora(dataset, tokenizer, pretrained_model):
+    stats = analyze_dataset(dataset, tokenizer, pretrained_model)
+    target_rank = dataset_aware_rank(stats)
+    init_rank = max(target_rank + 8, 2 * target_rank)
+    alpha = max(4 * target_rank, 2 * base_rank)
+    dropout = dataset_aware_dropout(stats)
+    modules = dataset_aware_modules(stats)
+
+    model = attach_adalora(
+        pretrained_model,
+        init_rank=init_rank,
+        target_rank=target_rank,
+        alpha=alpha,
+        dropout=dropout,
+        target_modules=modules,
+    )
+    train(model,
+          allocation_callback=peft_adalora_allocator,
+          monitoring_callback=stable_importance_logger)
+    return model
+\end{lstlisting}
+
+Profiling token statistics is linear in sampled tokens. Embedding variance requires embedding
+lookup but not full Transformer inference. The larger cost comes after selection: expanding the
+target module set increases low-rank matrices, gradient operations, and optimizer states.
+The current dataset-aware policy is therefore not yet compute-aware.

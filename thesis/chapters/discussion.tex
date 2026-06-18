@@ -1,0 +1,186 @@
+\chapter{Discussion}
+\label{chap:discussion}
+
+\section{What the Results Support}
+
+The strongest supported claim is that dataset-aware configuration improves the tested standard
+AdaLoRA baseline when enough data is available. This claim appears in both major experiment
+archives. The improvement is not merely a tiny fluctuation at 5,000 examples: it is 4.97 points in
+the primary experiment and 12.68 points in the separate five-seed archive.
+
+The selected-rank trend also validates a central mechanical goal. A 100-example subset does not
+receive the same target rank as a 10,000-example subset. Star-LoRA thereby removes one fixed
+assumption from standard AdaLoRA. It also produces a record of why a setting was selected, which
+is useful for debugging and further research.
+
+\section{What the Results Do Not Support}
+
+The experiments do not show that Star-LoRA universally outperforms LoRA. Fixed-rank LoRA is the
+best PEFT method at several budgets and is dramatically faster. Nor do the experiments show that
+the stability score improves allocation, because the score is not connected to the allocator.
+
+The results also do not isolate rank adaptation from module expansion. Star-LoRA changes several
+variables simultaneously. Its 5,000-example performance may come from a higher target rank, larger
+initial rank, different scaling, different dropout, a different schedule, expanded attention
+targets, expanded MLP targets, or interactions among them.
+
+This distinction changes how the work should be presented. The contribution is not a proven
+optimal rank formula. It is a prototype and empirical investigation showing that data-conditioned
+configuration can improve AdaLoRA, together with evidence about the conditions under which the
+current rules are costly or ineffective.
+
+\section{Why Star-LoRA May Help AdaLoRA}
+
+Three explanations are plausible. First, target rank 8 may be too rigid across budgets. Star-LoRA
+reduces rank on small datasets and increases it on larger datasets. Second, the longer allocation
+schedule may give the model more time before the final budget is fixed. Third, additional
+projections may carry useful task capacity that standard AdaLoRA cannot access.
+
+The current experiment cannot determine the relative contribution of these explanations. A
+factorial ablation is required. It is possible, for example, that module expansion explains most
+of the accuracy gain while rank selection contributes little. It is equally possible that the
+longer schedule protects useful rank components from early pruning.
+
+\section{Why Fixed LoRA Remains Strong}
+
+LoRA avoids dynamic pruning during short training. Every selected low-rank direction remains
+available for all epochs, and the optimizer does not need to estimate a structural allocation from
+early gradients. Rank 8 also appears to be a strong setting for Qwen2.5-0.5B on SST-2.
+
+Furthermore, LoRA targets only query and value projections in this implementation. Its smaller
+adapter surface may act as effective regularization and produces much higher throughput. The
+comparison illustrates a general research lesson: an adaptive method must be evaluated against a
+simple baseline that receives an appropriate rank and learning rate.
+
+The result also provides one answer to the question of why AdaLoRA may be less attractive in
+practice. When a fixed-rank baseline is both faster and highly accurate, the user has little reason
+to accept a more complicated schedule unless adaptive allocation provides a consistent or
+budget-specific advantage.
+
+\section{Extreme Low-Resource Failure}
+
+At 100 examples, all PEFT methods in the primary sweep are near chance. Reducing Star-LoRA's target
+rank does not solve the problem. Several factors may contribute:
+\begin{itemize}
+  \item only 39 optimization steps are estimated over three epochs;
+  \item the sequence-classification head begins with little task information;
+  \item the selected subset varies strongly with seed;
+  \item label and token statistics estimated from 100 examples are noisy;
+  \item AdaLoRA has little time to complete a meaningful allocation schedule.
+\end{itemize}
+
+A better extreme-low-resource design might freeze more components, train longer with early
+stopping, use stratified sampling, initialize from an instruction-tuned classifier, or disable
+dynamic allocation below a minimum step threshold. A method-selection policy could decide that
+fixed LoRA is preferable when $T$ is too small for reliable adaptive allocation.
+
+\section{Efficiency and the Adapter-Surface Problem}
+
+Star-LoRA's current rank formula includes no explicit compute constraint. A dataset can trigger
+seven module families, and even a moderate rank across all of them creates substantial work.
+The runtime results show that module selection may matter more than a one- or two-unit rank change.
+
+A compute-aware policy could solve
+\begin{equation}
+  \mathop{\rm maximize}_{\pi}\quad \widehat{U}(\pi,z)
+  \quad \text{subject to}\quad
+  C(\pi)\le C_{\max},
+\end{equation}
+where $\widehat{U}$ estimates task utility and $C$ estimates parameters, FLOPs, memory, or latency.
+Even a simple greedy module selection under a parameter budget would make comparisons with
+AdaLoRA fairer. The layer-wise results provide preliminary evidence that a smaller adapter surface
+can save meaningful time, although the present heuristic loses accuracy.
+
+\section{Interpretation of the LLM-Assisted Attempt}
+
+The LLM experiment is valuable as a documented negative result. An LLM can reason about broad
+architectural roles: lower layers may capture general patterns, upper layers may be more
+task-specific, and attention and MLP projections serve different functions. However, a text prompt
+does not provide the actual gradients, activation statistics, or validation loss changes needed to
+identify task-critical modules.
+
+The Claude-generated layout reduced runtime, implying that it proposed a sparser adaptation
+surface. Yet its lower accuracy shows that plausible architectural reasoning is not enough.
+A more promising LLM-assisted system would place the LLM inside a measured feedback loop:
+\begin{enumerate}
+  \item generate several candidate policies;
+  \item run a short calibration phase;
+  \item return loss, gradient, and cost summaries;
+  \item revise the policy or select the best candidate.
+\end{enumerate}
+Such a system would be more expensive and should be compared with ordinary hyperparameter
+optimization. It would also require exact recording of prompts, model versions, responses, and API
+errors.
+
+The failed Gemini attempts reveal another practical limitation. External APIs can be unavailable
+because of quotas or rate limits. A robust experiment must distinguish the requested policy source
+from the actual source used after fallback. The metadata did so correctly, but aggregate method
+names did not make the fallback obvious.
+
+\section{Required Ablations}
+
+The following experiments are the highest priority before a publication-strength claim:
+\begin{enumerate}
+  \item \textbf{Rank only:} dataset-aware rank with fixed \texttt{q\_proj}/\texttt{v\_proj}.
+  \item \textbf{Modules only:} fixed rank 8 with dataset-aware target modules.
+  \item \textbf{Schedule only:} standard rank and modules with the Star-LoRA schedule.
+  \item \textbf{Regularization only:} fixed rank and modules with adaptive dropout and scaling.
+  \item \textbf{Rank oracle:} grid search ranks 2, 4, 8, 16, and 32 for each budget.
+  \item \textbf{Budget matched:} compare methods with equal trainable parameter counts.
+  \item \textbf{Stability gate:} replace or modify PEFT importance using the stable score.
+\end{enumerate}
+
+The rank-oracle comparison is especially important. If the selected Star-LoRA rank is close to the
+best grid-search rank, the profiler reduces tuning cost. If not, the profile may still be useful,
+but the rank mapping requires redesign.
+
+\section{Limitations}
+
+\subsection{Single Dataset and Model}
+
+SST-2 is a balanced binary sentiment task. Dataset statistics that work there may not transfer to
+topic classification, natural language inference, question answering, or generation. Qwen-specific
+module rules also require adaptation for other architectures.
+
+\subsection{Heuristic Coefficients}
+
+The rank formula and thresholds are manually chosen. The numerical scales of token skew and
+embedding variance are not calibrated across tokenizers and model families. A learned or
+normalized controller may generalize better.
+
+\subsection{Incomplete Experiment Metadata}
+
+Archived results do not store complete command-line arguments, package versions, GPU type, or git
+commit. This limits exact reconstruction and prevents the secondary sweep from serving as a clean
+learning-rate ablation.
+
+\subsection{No Statistical Significance Test}
+
+Three or five seeds are useful but limited. Paired tests would require aligned seeds and clearly
+matched configurations. Confidence intervals or bootstrap analysis should accompany larger
+experiments.
+
+\subsection{Stability Monitoring Only}
+
+The current stable importance score is observational. Any statement that Star-LoRA's allocation is
+stability-gated would be inaccurate. The thesis instead treats the monitor as instrumentation for
+future development.
+
+\subsection{Profiling Cost and Data Leakage}
+
+The profiler uses only the training subset, so it does not directly leak validation labels.
+Nevertheless, embedding computation adds preprocessing cost. If policies are repeatedly adjusted
+after observing validation performance, ordinary model-selection leakage can occur and must be
+controlled with a held-out test set.
+
+\section{Ethical and Practical Considerations}
+
+PEFT can reduce the resources needed to adapt language models, potentially broadening access.
+However, lower adaptation cost also makes it easier to deploy models without sufficient evaluation.
+Dataset-aware automation should not conceal bias or poor label quality behind a single rank score.
+The profiler's class imbalance and token statistics are diagnostic signals, not a substitute for
+dataset documentation.
+
+External LLM APIs introduce privacy and reproducibility concerns. Sending dataset summaries or
+examples to a provider may violate data governance rules. Model versions, prompts, and responses
+must be recorded. For sensitive data, a local policy model or deterministic heuristic is safer.

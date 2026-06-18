@@ -1,0 +1,118 @@
+\chapter{Introduction}
+\label{chap:introduction}
+
+\section{Background}
+
+Pretrained language models have changed the usual workflow of natural language processing.
+Instead of training a separate architecture for every task, a general model is pretrained on a
+large corpus and then adapted to a smaller downstream dataset. The Transformer architecture
+\citep{vaswani2017attention} and models such as BERT \citep{devlin2019bert} established the
+effectiveness of this transfer-learning paradigm. Later model families increased parameter counts
+and broadened their capabilities, but the cost of updating and storing a complete copy of every
+model also increased.
+
+Full fine-tuning updates all parameters of a pretrained network. It remains conceptually simple,
+but it requires optimizer states and gradients for the entire model and produces a complete
+task-specific checkpoint. This is inconvenient when one base model must support many tasks,
+domains, users, or deployment environments. Parameter-efficient fine-tuning (PEFT) instead freezes
+most pretrained parameters and learns a small task-specific component. Adapter layers
+\citep{houlsby2019parameter}, prefix tuning \citep{li2021prefix}, prompt tuning
+\citep{lester2021power}, and low-rank updates are examples of this strategy.
+
+LoRA \citep{hu2022lora} is especially attractive because it adds a low-rank update to selected
+linear transformations. For a frozen weight matrix $W_0$, the adapted transformation is
+\begin{equation}
+  h = W_0 x + \Delta W x,
+  \qquad
+  \Delta W = BA,
+  \label{eq:lora-basic}
+\end{equation}
+where the rank $r$ of $A$ and $B$ is much smaller than the dimensions of $W_0$. Only the low-rank
+factors are trained. This design is easy to implement, creates small task-specific checkpoints,
+and can be merged into the base weights for inference.
+
+The rank $r$ controls both capacity and cost. A low rank may underfit a difficult task, while a
+high rank increases parameters and can overfit small data. In common practice, however, the same
+rank is assigned to every targeted matrix and is selected by convention or limited tuning.
+This raises a direct question: should a dataset with 100 examples receive the same adapter capacity
+as one with 10,000 examples?
+
+\section{From LoRA to AdaLoRA}
+
+AdaLoRA \citep{zhang2023adalora} addresses uniform allocation by representing updates in a
+singular-value-like form and pruning less important components during training. Rather than giving
+every matrix a permanent equal rank, AdaLoRA starts from a larger budget and progressively
+allocates capacity according to importance. The method is theoretically appealing because model
+layers and projections do not contribute equally to a downstream task.
+
+Despite that motivation, fixed-rank LoRA remains easier to use. AdaLoRA requires an initial rank,
+a target rank, a total training-step estimate, and a schedule describing when budget reduction
+begins, how often allocation is updated, and when the final budget is fixed. Importance estimates
+computed from short low-resource runs may also be noisy. In such settings the allocator has only a
+small number of gradient observations before it must make pruning decisions.
+
+It is difficult to prove a broad statement such as ``AdaLoRA is not used'' from the experiments in
+this thesis. The defensible technical claim is narrower: AdaLoRA exposes more configuration choices
+and runtime work than fixed-rank LoRA, while its benefit depends on the data and optimization
+setting. Therefore, a useful extension should reduce arbitrary configuration and make the
+allocation policy responsive to the downstream dataset.
+
+\section{Motivation for Star-LoRA}
+
+The starting observation of this project is that adapter capacity should reflect three broad
+properties:
+\begin{enumerate}[label=(\arabic*)]
+  \item \textbf{Available evidence.} Larger datasets can support more trainable capacity, whereas
+  very small datasets are vulnerable to overfitting and unstable estimates.
+  \item \textbf{Distribution quality.} Class imbalance, rare tokens, and highly skewed token
+  frequencies can make a nominal sample count overstate the effective amount of information.
+  \item \textbf{Task complexity.} Diverse labels and varied input representations may require more
+  adaptation capacity or a wider set of target transformations.
+\end{enumerate}
+
+\starlora\ operationalizes these ideas with measurable proxies. It analyzes the dataset before
+training and maps the resulting profile to adapter settings. It also records a stability-aware
+importance score during training to examine whether raw gradient-based importance is reliable.
+The name is used in this thesis as shorthand for \emph{Stability- and Task-Aware Rank Adaptation}.
+
+\section{Research Questions}
+
+The empirical study is organized around five research questions.
+\begin{description}[style=nextline,leftmargin=1.4cm]
+  \item[RQ1] Does Star-LoRA improve standard AdaLoRA across different low-resource sample budgets?
+  \item[RQ2] Does the policy select ranks that vary meaningfully with the amount and distribution
+  of data?
+  \item[RQ3] How does Star-LoRA compare with fixed-rank LoRA and full fine-tuning?
+  \item[RQ4] What runtime and stability trade-offs accompany dataset-aware module expansion?
+  \item[RQ5] Can an LLM-generated layer-wise policy provide a useful alternative to the
+  deterministic heuristic?
+\end{description}
+
+\section{Contributions}
+
+This undergraduate thesis makes the following contributions:
+\begin{enumerate}
+  \item It implements a lightweight dataset profiler for sample count, label distribution,
+  token statistics, and embedding variation.
+  \item It proposes a transparent bounded rank policy that combines dataset size, distribution,
+  and complexity factors.
+  \item It extends adapter selection from fixed attention projections to a dataset-dependent set
+  of attention and MLP projections.
+  \item It implements stability-aware logging based on an exponential moving average and
+  variance normalization of weight--gradient importance.
+  \item It evaluates full fine-tuning, LoRA, AdaLoRA, and Star-LoRA over five data budgets and
+  multiple random seeds.
+  \item It reports a negative exploratory result for LLM-assisted layer allocation and separates
+  genuine LLM outputs from failed API calls that used heuristic fallback.
+\end{enumerate}
+
+\section{Thesis Organization}
+
+\Cref{chap:background} reviews PEFT, LoRA, AdaLoRA, and dynamic rank methods.
+\Cref{chap:motivation} develops the design argument for dataset-aware allocation.
+\Cref{chap:method} describes Star-LoRA mathematically and algorithmically.
+\Cref{chap:implementation} documents the prototype.
+\Cref{chap:experiments} defines the experimental protocol.
+\Cref{chap:results} reports the results.
+\Cref{chap:discussion} discusses interpretation, limitations, and the exploratory LLM approach.
+\Cref{chap:conclusion} concludes the thesis.

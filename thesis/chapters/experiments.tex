@@ -1,0 +1,75 @@
+\chapter{Experimental Methodology}
+\label{chap:experiments}
+
+\section{Dataset}
+
+The experiments use SST-2, the binary sentiment classification task derived from the Stanford
+Sentiment Treebank \citep{socher2013recursive} and distributed as part of GLUE
+\citep{wang2018glue}. Each input is a sentence and each label indicates positive or negative
+sentiment. The task is suitable for controlled low-resource experiments because it has a standard
+validation set and a simple accuracy metric, while still requiring lexical and compositional
+judgment.
+
+Training subsets contain 100, 500, 1,000, 5,000, or 10,000 examples. The full validation split is
+used for evaluation. Because the subset is reshuffled by seed, reported standard deviations include
+variation due to both initialization and sampled examples.
+
+\section{Compared Methods}
+
+\begin{description}[style=nextline]
+  \item[Full fine-tuning] All model parameters are updated.
+  \item[LoRA] Rank 8 adapters are attached to query and value projections.
+  \item[AdaLoRA] Target rank 8 and initial rank 12 are used on query and value projections.
+  \item[Star-LoRA] Rank, initial rank, scaling, dropout, and target modules are selected from the
+  dataset profile, followed by PEFT AdaLoRA training.
+  \item[Layer-wise heuristic] The Star-LoRA rank policy is retained, but additional modules are
+  concentrated in upper layers.
+  \item[Claude layer-wise] A Claude-generated layer map is used as an exploratory alternative.
+\end{description}
+
+\section{Primary Experiment}
+
+The primary comparison is the archive \texttt{outputs/1e-4 various dt}. It contains full
+fine-tuning, LoRA, AdaLoRA, and Star-LoRA for three seeds (13, 21, and 42), five sample budgets,
+three epochs, batch size 8, float32 model weights, and learning rate $10^{-4}$ according to the
+experiment directory and run configuration. Since old JSON artifacts do not independently
+serialize the learning rate, the archive is kept intact rather than pooled with other sweeps.
+
+\section{Secondary Five-Seed Sweep}
+
+The archive \texttt{outputs/no change lr, various seeds} contains the same four methods over five
+seeds. The current training script's default learning rate is $2\times10^{-5}$, and the directory
+name indicates the unchanged or default learning-rate condition. Because the archived metadata
+does not store learning rate, the sweep is presented as a separate robustness check and not as a
+controlled single-factor learning-rate ablation.
+
+\section{Layer-Wise and LLM Explorations}
+
+The \texttt{rule\_base} archive contains the global rule-based method for five seeds up to 5,000
+examples. The \texttt{pilot} archive contains heuristic layer-wise runs and directories labeled
+Gemini. Since the Gemini requests failed and used heuristic fallback, only the heuristic rows are
+interpreted. The \texttt{claude} archive contains genuine Claude-generated layouts at 5,000
+examples for five seeds.
+
+\section{Metrics}
+
+Accuracy is
+\begin{equation}
+  \mathrm{Accuracy} = \frac{1}{M}\sum_{i=1}^{M}
+  \mathbf{1}[\hat{y}_i=y_i].
+\end{equation}
+Macro F1 averages class-wise F1 and is useful when predictions collapse toward one class.
+Runtime, samples per second, and steps per second measure efficiency. Mean and sample standard
+deviation are reported over seeds. Selected rank shows whether the dataset-aware rule changes
+capacity as intended.
+
+\section{Threats to Experimental Validity}
+
+The study uses one model family, one model size, and one classification dataset. Hyperparameters
+are not tuned independently for every method. Star-LoRA changes rank, scaling, dropout, schedule,
+and target modules together, so the main comparison does not isolate which component causes an
+improvement. Runtime is measured on the available system but hardware metadata is absent.
+Finally, three seeds in the primary sweep provide only a limited estimate of variance.
+
+These limitations determine the strength of the claims. The experiments can demonstrate prototype
+behavior and motivate further research; they cannot establish universal superiority.

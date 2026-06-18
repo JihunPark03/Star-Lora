@@ -1,0 +1,233 @@
+\chapter{Results}
+\label{chap:results}
+
+\section{Primary Accuracy Results}
+
+\Cref{tab:primary-accuracy} reports mean accuracy and standard deviation from the primary
+three-seed sweep.
+
+\begin{table}[H]
+\centering
+\caption{Primary SST-2 accuracy (\%) over three seeds. Best PEFT result per budget is bold.}
+\label{tab:primary-accuracy}
+\small
+\begin{tabular}{@{}rrrrrr@{}}
+\toprule
+Samples & Full & LoRA & AdaLoRA & Star-LoRA & Star Rank \\
+\midrule
+100   & 53.48$\pm$3.95 & \textbf{52.75$\pm$0.53} & 51.07$\pm$0.37 & 51.03$\pm$0.41 & 4.67 \\
+500   & 73.66$\pm$0.58 & \textbf{67.47$\pm$5.86} & 57.19$\pm$5.40 & 58.37$\pm$4.58 & 6.33 \\
+1,000 & 75.23$\pm$3.10 & \textbf{85.17$\pm$1.86} & 65.14$\pm$3.33 & 69.34$\pm$1.97 & 7.00 \\
+5,000 & 77.45$\pm$1.73 & 91.25$\pm$0.33 & 86.58$\pm$0.57 & \textbf{91.55$\pm$0.07} & 9.00 \\
+10,000& 76.83$\pm$0.50 & \textbf{92.28$\pm$0.65} & 90.02$\pm$0.60 & 91.97$\pm$0.64 & 10.00 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Star-LoRA's clearest advantage is relative to AdaLoRA.
+\begin{table}[H]
+\centering
+\caption{Star-LoRA accuracy difference relative to standard AdaLoRA.}
+\label{tab:adalora-delta}
+\begin{tabular}{@{}rrl@{}}
+\toprule
+Samples & Difference (percentage points) & Interpretation \\
+\midrule
+100 & $-0.04$ & no meaningful improvement \\
+500 & $+1.18$ & small improvement \\
+1,000 & $+4.20$ & substantial improvement \\
+5,000 & $+4.97$ & largest improvement \\
+10,000 & $+1.95$ & moderate improvement \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+At 100 examples, both adaptive methods remain near chance-level accuracy and have low macro F1.
+The run contains only 39 estimated steps, leaving little evidence for dynamic allocation. At 500
+examples, Star-LoRA begins to improve AdaLoRA but remains far behind fixed LoRA and full
+fine-tuning. At 1,000 examples the gap over AdaLoRA grows, although LoRA is still much stronger.
+At 5,000 examples Star-LoRA slightly exceeds LoRA and clearly exceeds AdaLoRA. At 10,000 examples
+LoRA regains a small lead.
+
+\section{Macro F1}
+
+\begin{table}[H]
+\centering
+\caption{Primary SST-2 macro F1 (\%) over three seeds.}
+\label{tab:primary-f1}
+\small
+\begin{tabular}{@{}rrrrr@{}}
+\toprule
+Samples & Full & LoRA & AdaLoRA & Star-LoRA \\
+\midrule
+100   & 42.71$\pm$13.33 & \textbf{49.03$\pm$3.78} & 39.58$\pm$7.18 & 39.56$\pm$7.20 \\
+500   & \textbf{73.54$\pm$0.49} & 66.73$\pm$5.97 & 56.11$\pm$6.62 & 57.65$\pm$5.18 \\
+1,000 & 75.02$\pm$3.40 & \textbf{85.15$\pm$1.87} & 64.98$\pm$3.22 & 69.16$\pm$2.11 \\
+5,000 & 77.32$\pm$1.88 & 91.24$\pm$0.34 & 86.57$\pm$0.57 & \textbf{91.55$\pm$0.06} \\
+10,000& 76.76$\pm$0.45 & \textbf{92.27$\pm$0.65} & 90.02$\pm$0.60 & 91.97$\pm$0.64 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Accuracy and macro F1 are nearly identical once performance becomes high, which is expected for a
+roughly balanced binary task. At 100 examples the difference is larger, indicating unstable or
+class-skewed predictions. Extreme low-resource runs are not favorable to the current adaptive
+mechanism.
+
+\section{Rank Selection}
+
+\begin{figure}[H]
+  \centering
+  \fbox{\begin{minipage}{0.78\textwidth}
+  \centering
+  \begin{tabular}{c|ccccc}
+  Training examples & 100 & 500 & 1,000 & 5,000 & 10,000\\
+  \hline
+  Mean selected rank & 4.67 & 6.33 & 7.00 & 9.00 & 10.00
+  \end{tabular}\\[1em]
+  $\text{Data budget}\ \nearrow \quad\Longrightarrow\quad
+  \text{selected adapter capacity}\ \nearrow$
+  \end{minipage}}
+  \caption{The deterministic policy increases target rank with the sample budget.}
+  \label{fig:rank-trend}
+\end{figure}
+
+The monotonic trend demonstrates that the policy operates as designed. It does not prove that each
+rank is optimal. Establishing optimality requires a controlled rank sweep under identical modules
+and schedules.
+
+\section{Stability Across Seeds}
+
+At 5,000 examples, Star-LoRA records an accuracy standard deviation of $0.0007$, compared with
+$0.0057$ for AdaLoRA and $0.0033$ for LoRA. In percentage-point terms these are 0.07, 0.57, and
+0.33. Star-LoRA combines its largest AdaLoRA improvement with its smallest observed variance.
+
+This result should not be generalized to every budget. At 100 examples Star-LoRA's macro-F1
+standard deviation is 7.20 percentage points, and at 500 examples accuracy varies by 4.58 points.
+The method appears stable in the 5,000-example condition, not uniformly stable.
+
+\section{Runtime and Throughput}
+
+\begin{table}[H]
+\centering
+\caption{Primary mean training runtime in seconds.}
+\label{tab:runtime}
+\begin{tabular}{@{}rrrrr@{}}
+\toprule
+Samples & Full & LoRA & AdaLoRA & Star-LoRA \\
+\midrule
+100 & 8.44 & 8.65 & 11.77 & 15.72 \\
+500 & 19.38 & 17.89 & 25.97 & 56.33 \\
+1,000 & 32.97 & 29.42 & 43.10 & 100.78 \\
+5,000 & 142.92 & 120.93 & 183.26 & 444.96 \\
+10,000 & 277.48 & 237.05 & 362.96 & 851.83 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+At 5,000 examples Star-LoRA is approximately $2.43\times$ slower than AdaLoRA and
+$3.68\times$ slower than LoRA. The 0.30 percentage-point advantage over LoRA at that budget is
+therefore obtained at a large runtime premium. At 10,000 examples Star-LoRA is slower and slightly
+less accurate than LoRA.
+
+The primary reason is visible in the run metadata. Standard AdaLoRA targets
+\texttt{q\_proj} and \texttt{v\_proj}. The 5,000-example Star-LoRA run selects rank 9 and targets
+all four attention projections plus \texttt{gate\_proj}, \texttt{up\_proj}, and
+\texttt{down\_proj}. The method increases both rank and adapter surface.
+
+\section{Secondary Five-Seed Sweep}
+
+\begin{table}[H]
+\centering
+\caption{Accuracy (\%) in the separate five-seed archive. This sweep is not pooled with the
+primary experiment.}
+\label{tab:secondary}
+\begin{tabular}{@{}rrrrr@{}}
+\toprule
+Samples & Full & LoRA & AdaLoRA & Star-LoRA \\
+\midrule
+100 & 81.88 & 50.02 & 50.21 & 50.21 \\
+500 & 86.79 & 53.23 & 50.41 & 50.50 \\
+1,000 & 88.14 & 63.81 & 52.94 & 53.83 \\
+5,000 & 89.47 & 90.02 & 71.33 & 84.01 \\
+10,000 & 88.44 & 91.61 & 79.86 & 89.84 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+This sweep presents a different absolute performance regime, especially for full fine-tuning,
+which confirms that archived experiment groups should not be mixed without complete configuration
+records. Within the sweep, Star-LoRA again improves AdaLoRA most strongly at larger budgets: by
+12.68 percentage points at 5,000 examples and 9.98 points at 10,000. LoRA remains the best PEFT
+method at both budgets.
+
+\section{Layer-Wise Heuristic}
+
+\begin{table}[H]
+\centering
+\caption{Five-seed global and layer-wise heuristic results from separate archived runs.}
+\label{tab:layerwise}
+\begin{tabular}{@{}rrrrr@{}}
+\toprule
+Samples & Global Acc. & Layer Acc. & Global Time & Layer Time \\
+\midrule
+100 & 50.05 & 50.07 & 14.17 & 11.96 \\
+500 & 49.63 & 49.70 & 43.15 & 29.91 \\
+1,000 & 51.01 & 51.08 & 71.69 & 49.25 \\
+5,000 & 71.93 & 68.28 & 310.44 & 209.98 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+At 5,000 examples the layer-wise heuristic reduces runtime by about 32\% but lowers accuracy by
+3.65 percentage points. Concentrating additional adapters in upper layers is an efficiency
+trade-off, but the chosen thresholds do not preserve the global policy's accuracy.
+
+\section{Exploratory LLM-Assisted Allocation}
+
+\begin{table}[H]
+\centering
+\caption{Five-seed exploratory results at 5,000 examples.}
+\label{tab:llm}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Method & Accuracy (\%) & Macro F1 (\%) & Runtime (s) \\
+\midrule
+Global rule-based & 71.93 & 71.88 & 310.44 \\
+Layer-wise heuristic & 68.28 & 68.21 & 209.98 \\
+Claude layer-wise & 67.45 & 67.40 & 190.99 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The Claude policy is about 38.5\% faster than the global rule-based method but 4.48 percentage
+points less accurate. It is also 0.83 points less accurate than the deterministic layer-wise
+heuristic while being about 9\% faster. The generated layout selected a cheaper adapter surface,
+but did not identify the modules needed to preserve task quality.
+
+No Gemini accuracy is reported. The ``Gemini'' and heuristic rows in the pilot summary are
+identical because the Gemini API calls returned quota errors and the implementation fell back to
+the heuristic. Treating these rows as independent methods would double-count one policy.
+
+\section{Answers to the Research Questions}
+
+\paragraph{RQ1.}
+Star-LoRA improves standard AdaLoRA at four of five budgets in the primary sweep, with the largest
+gain of 4.97 percentage points at 5,000 examples.
+
+\paragraph{RQ2.}
+The selected rank increases from approximately 5 to 10 as the training budget grows from 100 to
+10,000 examples. The policy is responsive, although optimality has not been established.
+
+\paragraph{RQ3.}
+Star-LoRA is competitive with LoRA at 5,000 and 10,000 examples, but LoRA is substantially better
+at 500 and 1,000 examples and slightly better at 10,000.
+
+\paragraph{RQ4.}
+Dataset-aware module expansion is expensive. At 5,000 examples the primary Star-LoRA run is
+approximately 2.43 times slower than AdaLoRA. Seed variance is low in this condition but not in
+extreme low-resource conditions.
+
+\paragraph{RQ5.}
+The Claude-generated policy reduces runtime but does not improve accuracy. Gemini attempts are
+invalid for performance comparison because they used heuristic fallback.

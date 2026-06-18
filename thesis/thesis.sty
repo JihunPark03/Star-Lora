@@ -1,0 +1,218 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{thesis}[2026/06/13 Kasai Laboratory thesis style]
+
+\makeatletter
+
+\def\studentid#1{\gdef\@studentid{#1}}
+\def\jclass#1{\gdef\@jclass{#1}}
+\def\jtitle#1{\gdef\@jtitle{#1}}
+\def\jfaculty#1{\gdef\@jfaculty{#1}}
+\def\jschool#1{\gdef\@jschool{#1}}
+\def\jauthor#1{\gdef\@jauthor{#1}}
+\def\jadvisor#1#2{\gdef\@jadvisor{#1}\gdef\@jposition{#2}}
+\def\jsyear#1{\gdef\@jsyear{#1}}
+\def\jkeyword#1{\gdef\@jkeyword{#1}}
+\def\jdate#1{\gdef\@jdate{#1}}
+\def\jsupervisor#1{\gdef\@jsupervisor{#1}}
+\def\jresearchproj#1{\gdef\@jresearchproj{#1}}
+
+\def\eclass#1{\gdef\@eclass{#1}}
+\def\etitle#1{\gdef\@etitle{#1}}
+\def\efaculty#1{\gdef\@efaculty{#1}}
+\def\eschool#1{\gdef\@eschool{#1}}
+\def\eauthor#1{\gdef\@eauthor{#1}}
+\def\eadvisor#1#2{\gdef\@eposition{#1}\gdef\@eadvisor{#2}}
+\def\eyear#1{\gdef\@eyear{#1}}
+\def\ekeyword#1{\gdef\@ekeyword{#1}}
+\def\edate#1{\gdef\@edate{#1}}
+\def\esupervisor#1{\gdef\@esupervisor{#1}}
+\def\eresearchproj#1{\gdef\@eresearchproj{#1}}
+
+% Defaults required by the abstract environments in the original template.
+\def\@euniv{Waseda University}
+\def\@juniv{早稲田大学}
+\def\@jhyear{}
+
+\renewcommand{\baselinestretch}{1.1}
+\setlength{\parskip}{.2\baselineskip}
+\setlength{\textwidth}{15.5cm}
+\setlength{\oddsidemargin}{0mm}
+\setlength{\evensidemargin}{0mm}
+\setlength{\topmargin}{-1cm}
+\setlength{\textheight}{23.5cm}
+\setlength{\footskip}{18mm}
+
+\newcommand{\bindermode}{%
+  \setlength{\textwidth}{16.5cm}
+  \setlength{\oddsidemargin}{0mm}
+  \setlength{\evensidemargin}{0mm}
+  \setlength{\topmargin}{-2cm}
+  \setlength{\textheight}{25.0cm}
+  \setlength{\footskip}{18mm}
+}
+
+\newenvironment{lineskiptitle}{\baselineskip=1.2cm}{}
+
+\def\jmaketitle{\par
+  \begingroup
+  \@jmaketitle
+  \endgroup
+}
+
+\def\@jmaketitle{%
+  \thispagestyle{empty}
+  \begin{center}
+  \vspace*{3.5cm}\par
+    {\huge \@jsyear 年度\ \ \@jclass}
+  \vspace*{2.5cm}\par
+    \begin{lineskiptitle}
+    {\Huge \@jtitle}
+    \end{lineskiptitle}
+    \vspace*{4.2cm}\par
+    {\huge \@jauthor}
+    \vspace*{2.2cm}\par
+    {\LARGE 早稲田大学 \@jschool}
+    \vspace*{0.2cm}\par
+    {\LARGE \@jfaculty}
+    \vspace*{0.2cm}\par
+    {\LARGE \@jresearchproj}
+    \vspace*{2cm}\par
+    \renewcommand{\arraystretch}{1.8}
+    \begin{tabular}{lcl}
+     {\LARGE 学籍番号}&{\LARGE：}&{\LARGE \@studentid}\\
+     {\LARGE 提出日}&{\LARGE：}&{\LARGE \@jdate}\\
+     {\LARGE 指導教員}&{\LARGE：}&{\LARGE \@jsupervisor}\\
+    \end{tabular}
+    \renewcommand{\arraystretch}{1.0}
+  \end{center}
+  \cleardoublepage
+  \pagenumbering{roman}
+}
+
+\def\emaketitle{\par
+  \begingroup
+  \@emaketitle
+  \endgroup
+}
+
+\def\@emaketitle{%
+  \thispagestyle{empty}
+  \begin{center}
+  \vspace*{2.5cm}\par
+    {\huge AY\@jsyear\ \ \@eclass\ Thesis}
+  \vspace*{2cm}\par
+    \begin{lineskiptitle}
+    {\Huge \@etitle}
+    \end{lineskiptitle}
+    \vspace{3cm}\par
+    {\huge \@eauthor}\par
+    \vspace*{2.5cm}\par
+    {\large A Thesis Submitted to}\par
+    {\large the \@efaculty,}\par
+    {\large the \@eschool of Waseda University}\par
+    {\large in Partial Fulfillment of the Requirements for the Degree of \@eclass\ of Engineering}
+    \vspace*{1.4cm}\par
+    {\LARGE Student ID: \@studentid}
+    \vspace*{0.4cm}\par
+    {\LARGE Submission Date: \@edate}
+    \vspace*{0.4cm}\par
+    {\LARGE Advisor: Prof. \@esupervisor}
+    \vspace*{0.4cm}\par
+    {\LARGE Research Guidance:}
+    \vspace*{0.2cm}\par
+    {\LARGE \@eresearchproj}
+  \end{center}
+  \cleardoublepage
+  \pagenumbering{roman}
+}
+
+\newenvironment{lineskipabst}{\baselineskip=1cm}{}
+
+\newenvironment{jabstract}{%
+  \begin{center}
+    {\Large\bf \@jclass\ \@jsyear 年度}
+    \vspace{0.5cm}\par
+    \begin{lineskipabst}
+    {\LARGE\bf \@jtitle}\vspace{2cm}
+    \end{lineskipabst}
+  \end{center}
+  \parindent=1zw
+  \section*{論文要旨}
+  \ifjapanese\else\renewcommand{\baselinestretch}{1.15}\selectfont\fi
+}{%
+  \section*{キーワード}
+  \@jkeyword\par
+  \vspace{2.5cm}\par
+  {\@juniv} {\@jfaculty}
+  \begin{flushright}
+    {\@jauthor}
+  \end{flushright}
+  \cleardoublepage
+  \ifjapanese\parindent=1zw\else\parindent=1.6zw\fi
+  \renewcommand{\baselinestretch}{1.0}\selectfont
+}
+
+\newenvironment{eabstract}{%
+  \begin{center}
+    {\Large\bf Abstract of \@eclass\ Thesis, Academic Year \@eyear}
+    \vspace{0.5cm}\par
+    \begin{lineskipabst}
+    {\LARGE\sf \@etitle}\vspace{2cm}
+    \end{lineskipabst}
+  \end{center}
+  \parindent=1.6zw
+  \section*{Summary}
+  \ifjapanese\renewcommand{\baselinestretch}{0.89}\selectfont\fi
+}{%
+  \section*{Keywords}
+  \@ekeyword\par
+  \vspace{2.5cm}\par
+  {\@efaculty}\par
+  {\@euniv}
+  \begin{flushright}
+    {\@eauthor}
+  \end{flushright}
+  \cleardoublepage
+  \ifjapanese\parindent=1zw\else\parindent=1.6zw\fi
+  \renewcommand{\baselinestretch}{1.0}\selectfont
+}
+
+\renewcommand{\tableofcontents}{%
+  \section*{\contentsname}
+  \@starttoc{toc}
+  \newpage
+}
+
+\renewcommand{\listoffigures}{%
+  \section*{\listfigurename}
+  \@starttoc{lof}
+  \newpage
+}
+
+\renewcommand{\listoftables}{%
+  \section*{\listtablename}
+  \@starttoc{lot}
+  \cleardoublepage
+}
+
+\newenvironment{acknowledgment}{%
+  \addcontentsline{toc}{chapter}{\acknowledgmentname}
+  \chapter*{\acknowledgmentname}
+}{}
+
+\newenvironment{bib}[1][100]{%
+  \addcontentsline{toc}{chapter}{\bibname}
+}{}
+
+\setcounter{secnumdepth}{3}
+\renewcommand\thesubsubsection{(\arabic{subsubsection})}
+
+\renewenvironment{itemize}{%
+   \begin{list}{\parbox{1zw}{$\bullet$}}{%
+      \setlength{\itemsep}{0em}
+      \setlength{\parsep}{0em}
+   }}{%
+   \end{list}
+}
+
+\makeatother

@@ -1,0 +1,107 @@
+\newif\ifjapanese
+\newif\ifmaster
+\newif\ifcomm
+
+\japanesefalse
+\masterfalse
+\commfalse
+
+\ifjapanese
+  \documentclass[dvipdfmx,a4j,openright,11pt]{jreport}
+  \renewcommand{\bibname}{参考文献}
+  \newcommand{\acknowledgmentname}{謝辞}
+\else
+  \documentclass[dvipdfmx,a4paper,11pt]{report}
+  \newcommand{\acknowledgmentname}{Acknowledgment}
+\fi
+
+\usepackage{thesis}
+\usepackage{kasailab_math}
+\usepackage{ascmac}
+\usepackage{graphicx}
+\usepackage{multirow}
+\usepackage{url}
+\usepackage{color}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage{caption}
+\usepackage{float}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage[hidelinks]{hyperref}
+\usepackage[nameinlink,noabbrev]{cleveref}
+
+\definecolor{codegray}{RGB}{245,245,245}
+\definecolor{codeblue}{RGB}{30,70,140}
+\lstset{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codegray},
+  keywordstyle=\color{codeblue}\bfseries,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible,
+  showstringspaces=false
+}
+
+\newcommand{\starlora}{Star-LoRA}
+\newcommand{\qwenmodel}{Qwen2.5-0.5B}
+
+% Replace the identity placeholders before submission.
+\jtitle{Star-LoRA：パラメータ効率的ファインチューニングのためのデータセット適応型ランク・モジュール割当}
+\jclass{卒業論文}
+\jschool{基幹理工学部}
+\jfaculty{情報理工学科}
+\studentid{REPLACE-WITH-STUDENT-ID}
+\jauthor{氏名を入力}
+\jsyear{2026}
+\jkeyword{大規模言語モデル、LoRA、AdaLoRA、パラメータ効率的ファインチューニング}
+\jdate{2026年REPLACE月REPLACE日}
+\jsupervisor{笠井 裕之}
+\jresearchproj{最適化・学習システム研究}
+
+\eclass{Bachelor}
+\etitle{Star-LoRA: Dataset-Aware Rank and Module Allocation for Parameter-Efficient Fine-Tuning}
+\efaculty{Department of Computer Science and Engineering}
+\eschool{School of Fundamental Science and Engineering}
+\eauthor{REPLACE WITH STUDENT NAME}
+\eyear{2026}
+\ekeyword{Large Language Models, LoRA, AdaLoRA, Parameter-Efficient Fine-Tuning, Rank Allocation}
+\edate{REPLACE WITH SUBMISSION DATE}
+\esupervisor{Hiroyuki Kasai}
+\eresearchproj{Research on Optimization and Learning for Systems}
+
+\begin{document}
+
+\ifjapanese
+  \jmaketitle
+\else
+  \emaketitle
+\fi
+
+\include{abstract}
+
+\tableofcontents
+\listoffigures
+\listoftables
+
+\pagenumbering{arabic}
+
+\include{input/01}
+\include{input/02}
+\include{input/03}
+\include{input/04}
+\include{input/05}
+\include{input/06}
+
+\include{input/acknowledgment}
+
+\appendix
+\include{input/appendix}
+
+\bibliographystyle{unsrt}
+\bibliography{references}
+
+\end{document}

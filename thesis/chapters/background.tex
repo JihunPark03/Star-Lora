@@ -1,0 +1,135 @@
+\chapter{Background and Related Work}
+\label{chap:background}
+
+\section{Transfer Learning and Full Fine-Tuning}
+
+Transfer learning separates general representation learning from task adaptation. A pretrained
+model learns linguistic regularities from a large corpus; supervised fine-tuning then adjusts it
+to a labeled task. BERT demonstrated that a single bidirectional Transformer encoder could achieve
+strong results across multiple language-understanding benchmarks after task-specific fine-tuning
+\citep{devlin2019bert}. GLUE later provided a standardized collection of classification and
+regression tasks for evaluating general language understanding \citep{wang2018glue}.
+
+If a model has $P$ parameters, full fine-tuning stores gradients for approximately $P$ parameters
+and, with an optimizer such as Adam, normally maintains additional first- and second-moment states.
+The exact memory use depends on precision and implementation, but it scales with the full model
+size. Repeating this process for $K$ tasks produces $K$ full checkpoints. This motivates methods
+whose trainable and stored parameters are much smaller than $P$.
+
+\section{Parameter-Efficient Fine-Tuning}
+
+PEFT methods differ in where they introduce task-specific capacity.
+Houlsby adapters insert small bottleneck networks into Transformer blocks
+\citep{houlsby2019parameter}. Prefix tuning learns continuous vectors that act as virtual prefix
+tokens for attention \citep{li2021prefix}. Prompt tuning learns a smaller set of input embeddings
+\citep{lester2021power}. BitFit updates selected bias parameters \citep{zaken2022bitfit}.
+These methods illustrate that effective task adaptation may occupy a lower-dimensional subspace
+than the full parameter space.
+
+PEFT is not automatically superior to full fine-tuning. Restricting trainable capacity introduces
+an inductive bias, and the best method depends on model architecture, task, data volume, and
+optimization. Its practical advantage lies in the reduced trainable state and the ability to keep
+one shared base model.
+
+\section{Low-Rank Adaptation}
+
+Consider a pretrained matrix $W_0 \in \mathbb{R}^{d_{\mathrm{out}}\times d_{\mathrm{in}}}$.
+LoRA keeps $W_0$ frozen and parameterizes its update as
+\begin{equation}
+  \Delta W = \frac{\alpha}{r}BA,
+  \qquad
+  A \in \mathbb{R}^{r\times d_{\mathrm{in}}},
+  \quad
+  B \in \mathbb{R}^{d_{\mathrm{out}}\times r}.
+  \label{eq:lora-scale}
+\end{equation}
+The number of trainable parameters becomes
+\begin{equation}
+  P_{\mathrm{LoRA}} = r(d_{\mathrm{in}} + d_{\mathrm{out}})
+  \label{eq:lora-params}
+\end{equation}
+instead of $d_{\mathrm{in}}d_{\mathrm{out}}$. When
+$r \ll \defmin(d_{\mathrm{in}},d_{\mathrm{out}})$, the saving is substantial.
+The scaling factor $\alpha/r$ controls the contribution of the learned update.
+
+LoRA's main engineering advantage is predictability. A practitioner selects the rank, target
+modules, dropout, and scaling factor, then trains using an ordinary optimization loop. However,
+predictability comes from fixing the allocation. Every selected module usually receives the same
+rank even when modules differ in size, function, or task relevance.
+
+\subsection{The Rank-Selection Problem}
+
+Rank is a capacity hyperparameter. Searching over ranks multiplies training cost. A rank selected
+on one dataset or model may not transfer to another. DyLoRA trains a nested range of ranks so that
+one run can support multiple deployment ranks \citep{valipour2023dylora}. QDyLoRA combines this
+idea with quantized adaptation \citep{rajabzadeh2024qdylora}, while QLoRA focuses on reducing base
+model memory through 4-bit quantization \citep{dettmers2023qlora}. These works reinforce that
+rank and resource constraints are central practical questions rather than minor implementation
+details.
+
+\section{AdaLoRA}
+
+AdaLoRA represents a weight update using a decomposition analogous to
+\begin{equation}
+  \Delta W = P\Lambda Q,
+  \label{eq:adalora-decomp}
+\end{equation}
+where components associated with diagonal entries of $\Lambda$ can be scored and pruned.
+It begins with a relatively generous rank and gradually reduces the total budget. Importance
+reflects both parameter contribution and uncertainty, allowing capacity to move toward matrices
+that appear more useful \citep{zhang2023adalora}.
+
+The training schedule has three conceptual phases:
+\begin{enumerate}
+  \item an initial phase in which the larger parameterization is trained;
+  \item a budget-reduction phase in which importance is periodically estimated and components are
+  pruned;
+  \item a final phase in which the resulting allocation is refined without further pruning.
+\end{enumerate}
+
+The PEFT implementation requires values corresponding to the initial rank, target rank, total
+steps, initial warm-up, final fine-tuning period, and allocation interval. This makes AdaLoRA more
+dependent on the training horizon than ordinary LoRA.
+
+\section{Why AdaLoRA May See Less Practical Use}
+
+This section explains technical barriers without claiming a comprehensive survey of adoption.
+
+\subsection{Configuration Burden}
+
+Fixed-rank LoRA has a compact mental model: choose $r$ and target modules. AdaLoRA adds multiple
+interacting values. An unsuitable schedule can leave too few allocation updates in a short run or
+can prune before the task signal is stable. The user must also ensure that the configured total
+steps agree with the actual optimization loop.
+
+\subsection{Noisy Importance in Short Runs}
+
+Low-resource experiments may contain only tens or hundreds of optimizer steps. Early gradients
+reflect initialization, minibatch order, and classifier-head instability. If an adaptive method
+must allocate capacity during this period, its flexibility may amplify noise instead of finding a
+better structure.
+
+\subsection{Runtime and Implementation Complexity}
+
+Dynamic allocation requires score maintenance and periodic mask or rank updates. The overhead may
+be modest relative to very large models, but it matters in small experimental settings and makes
+debugging harder. Fixed LoRA is supported by a broad ecosystem and has fewer moving parts.
+
+\subsection{A Strong Simple Baseline}
+
+Most importantly, fixed LoRA can already perform very well. A more complex allocator must beat not
+only full fine-tuning but also a well-chosen fixed rank. The results in \Cref{chap:results} confirm
+that this is a demanding baseline on SST-2.
+
+\section{Dataset-Aware and Layer-Aware Adaptation}
+
+Existing adaptive approaches mostly use signals observed during training, such as gradients,
+weights, or singular values. Star-LoRA asks a complementary question: can useful allocation
+decisions be made before training from properties of the downstream data? Pre-training analysis
+cannot replace gradient evidence, but it can provide a prior. For example, a tiny imbalanced
+dataset should not automatically receive the same capacity as a large balanced dataset.
+
+The approach in this thesis is intentionally interpretable. It does not learn a rank controller
+and does not claim that its handcrafted formula is globally optimal. Its purpose is to test whether
+simple dataset evidence can improve a standard AdaLoRA configuration and to reveal where such a
+policy fails.

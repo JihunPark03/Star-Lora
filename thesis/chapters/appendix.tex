@@ -1,0 +1,135 @@
+\chapter{Detailed Experimental Tables}
+
+\section{Primary Sweep}
+
+\begin{longtable}{@{}lrrrrr@{}}
+\caption{Complete primary aggregate results. Accuracy and F1 are fractions.}
+\label{tab:complete-primary}\\
+\toprule
+Method & $N$ & Accuracy & Macro F1 & Runtime & Rank\\
+\midrule
+\endfirsthead
+\toprule
+Method & $N$ & Accuracy & Macro F1 & Runtime & Rank\\
+\midrule
+\endhead
+Full & 100 & 0.5348 & 0.4271 & 8.44 & --\\
+Full & 500 & 0.7366 & 0.7354 & 19.38 & --\\
+Full & 1,000 & 0.7523 & 0.7502 & 32.97 & --\\
+Full & 5,000 & 0.7745 & 0.7732 & 142.92 & --\\
+Full & 10,000 & 0.7683 & 0.7676 & 277.48 & --\\
+LoRA & 100 & 0.5275 & 0.4903 & 8.65 & 8\\
+LoRA & 500 & 0.6747 & 0.6673 & 17.89 & 8\\
+LoRA & 1,000 & 0.8517 & 0.8515 & 29.42 & 8\\
+LoRA & 5,000 & 0.9125 & 0.9124 & 120.93 & 8\\
+LoRA & 10,000 & 0.9228 & 0.9227 & 237.05 & 8\\
+AdaLoRA & 100 & 0.5107 & 0.3958 & 11.77 & 8\\
+AdaLoRA & 500 & 0.5719 & 0.5611 & 25.97 & 8\\
+AdaLoRA & 1,000 & 0.6514 & 0.6498 & 43.10 & 8\\
+AdaLoRA & 5,000 & 0.8658 & 0.8657 & 183.26 & 8\\
+AdaLoRA & 10,000 & 0.9002 & 0.9002 & 362.96 & 8\\
+Star-LoRA & 100 & 0.5103 & 0.3956 & 15.72 & 4.67\\
+Star-LoRA & 500 & 0.5837 & 0.5765 & 56.33 & 6.33\\
+Star-LoRA & 1,000 & 0.6934 & 0.6916 & 100.78 & 7\\
+Star-LoRA & 5,000 & 0.9155 & 0.9155 & 444.96 & 9\\
+Star-LoRA & 10,000 & 0.9197 & 0.9197 & 851.83 & 10\\
+\bottomrule
+\end{longtable}
+
+\section{Representative Dataset Profiles}
+
+\begin{table}[H]
+\centering
+\caption{Representative Star-LoRA dataset statistics. Values differ slightly by sampled seed.}
+\label{tab:profiles}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Statistic & $N=100$ & $N=5,000$\\
+\midrule
+Class imbalance & 0.0769 & 0.2072\\
+Token sparsity & 0.8150 & 0.6286\\
+Token-frequency skew & 2.6868 & 6.4541\\
+Normalized label entropy & 0.9988 & 0.9903\\
+Embedding variance & $2.69\times10^{-5}$ & $2.80\times10^{-5}$\\
+Selected target rank & 5 & 9\\
+Initial rank & 13 & 18\\
+Dropout & 0.15 & 0.10\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+At 100 examples, high token sparsity triggers key and output projections, but the MLP condition is
+blocked by the $N\ge250$ requirement. At 5,000 examples, high entropy, sparsity, and token skew
+activate all attention and MLP projection families.
+
+\chapter{Suggested Ablation Protocol}
+
+\begin{longtable}{@{}p{0.21\textwidth}p{0.20\textwidth}p{0.20\textwidth}p{0.28\textwidth}@{}}
+\caption{Proposed configurations for separating Star-LoRA components.}\\
+\toprule
+Configuration & Rank & Modules & Other settings\\
+\midrule
+\endfirsthead
+\toprule
+Configuration & Rank & Modules & Other settings\\
+\midrule
+\endhead
+LoRA baseline & fixed 8 & q, v & LoRA defaults\\
+AdaLoRA baseline & target 8 & q, v & standard schedule\\
+Rank-only Star & dataset-aware & q, v & standard AdaLoRA schedule\\
+Module-only Star & fixed 8 & dataset-aware & standard schedule\\
+Schedule-only Star & fixed 8 & q, v & Star schedule\\
+Regularization-only Star & fixed 8 & q, v & adaptive alpha/dropout\\
+Full Star-LoRA & dataset-aware & dataset-aware & all proposed settings\\
+Budget-matched Star & selected under cap & selected under cap & equal trainable parameters\\
+\bottomrule
+\end{longtable}
+
+For every configuration, report mean and standard deviation over at least five aligned seeds,
+accuracy, macro F1, trainable parameters, runtime, throughput, profiling time, peak GPU memory, and
+selected modules. Use the same sampled subset for all methods under a seed. Where possible, report
+paired confidence intervals for method differences.
+
+\chapter{Reproduction Commands}
+
+\section{Single Star-LoRA Run}
+
+\begin{lstlisting}[language=bash]
+python train.py \
+  --model_name Qwen/Qwen2.5-0.5B \
+  --dataset_name glue \
+  --dataset_config sst2 \
+  --text_column sentence \
+  --label_column label \
+  --num_samples 5000 \
+  --method dataset_aware_adalora \
+  --base_rank 8 \
+  --torch_dtype float32 \
+  --epochs 3 \
+  --batch_size 8 \
+  --lr 1e-4 \
+  --seed 13 \
+  --output_dir outputs/reproduction/star_n5000_seed13
+\end{lstlisting}
+
+\section{Multi-Seed Sweep}
+
+\begin{lstlisting}[language=bash]
+python run_experiments.py \
+  --methods full lora adalora dataset_aware_adalora \
+  --sample_budgets 100 500 1000 5000 10000 \
+  --seeds 13 21 42 87 100 \
+  --torch_dtype float32 \
+  --epochs 3 \
+  --batch_size 8 \
+  --lr 1e-4 \
+  --output_root outputs/reproduction_sweep
+\end{lstlisting}
+
+\section{Artifact Interpretation}
+
+\texttt{results.csv} contains one row per method, budget, and seed.
+\texttt{summary.csv} contains aggregate means and standard deviations.
+\texttt{experiment\_info.json} contains selected settings and metrics.
+\texttt{stability\_scores.csv} contains per-step importance logs. Results from different
+\texttt{output\_root} directories should not be pooled unless all experimental settings match.

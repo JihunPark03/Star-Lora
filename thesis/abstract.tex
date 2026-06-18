@@ -1,0 +1,30 @@
+\begin{eabstract}
+Low-Rank Adaptation (LoRA) is a practical method for adapting large pretrained models because it
+freezes the base model and learns compact low-rank updates. Its simplicity is also a limitation:
+the same rank and target modules are normally selected without regard to the size, distribution,
+or complexity of the downstream data. AdaLoRA redistributes a parameter budget during training,
+but introduces an allocation schedule, importance estimation, and sensitivity to short
+low-resource runs.
+
+This thesis presents \starlora, a dataset-aware extension of AdaLoRA for low-resource sequence
+classification. Before training, Star-LoRA profiles sample count, class imbalance, normalized
+label entropy, token sparsity, token-frequency skew, and input-embedding variance. A bounded policy
+uses these statistics to select target rank, initial rank, regularization, and adapter target
+modules. During training, a stability monitor records exponential-moving-average and
+variance-normalized importance. The current prototype uses this score for analysis rather than
+replacing AdaLoRA's internal allocator.
+
+Experiments use Qwen2.5-0.5B on SST-2 subsets containing 100 to 10,000 training examples. In the
+primary three-seed sweep, Star-LoRA selects average target ranks from 4.67 to 10 as the sample
+budget grows. Relative to standard AdaLoRA, its largest accuracy improvement is 4.97 percentage
+points at 5,000 examples. It reaches 91.55\% accuracy in this condition, compared with AdaLoRA's
+86.58\%. Fixed-rank LoRA remains a strong and substantially faster baseline, showing that
+dataset-aware allocation does not guarantee universal superiority.
+
+An exploratory extension asks a large language model to propose a layer-wise adapter layout.
+Claude-generated layouts reduce runtime but do not improve accuracy. Gemini-labeled runs are
+excluded from LLM performance claims because the API requests failed and used heuristic fallback.
+The results show that dataset-aware configuration can improve standard AdaLoRA, while also
+identifying compute-aware selection, controlled ablation, and stability-gated allocation as
+necessary future work.
+\end{eabstract}

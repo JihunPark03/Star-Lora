@@ -1,0 +1,77 @@
+\chapter{Motivation and Problem Formulation}
+\label{chap:motivation}
+
+\section{Problem Definition}
+
+Let $\mathcal{D}=\{(x_i,y_i)\}_{i=1}^{N}$ be a labeled downstream dataset and let
+$f_{\theta_0}$ be a pretrained model. The base parameters $\theta_0$ are frozen. For a set of
+candidate linear modules $\mathcal{M}$, an adaptation policy selects
+\begin{equation}
+  \pi(\mathcal{D}) =
+  \left(r_{\mathrm{target}}, r_{\mathrm{init}},
+  \alpha, p_{\mathrm{drop}}, \mathcal{M}_{\mathrm{target}}, \mathcal{S}\right),
+  \label{eq:policy-output}
+\end{equation}
+where $\mathcal{S}$ denotes the AdaLoRA schedule.
+
+The ideal policy would maximize validation performance subject to parameter, memory, and runtime
+constraints. Directly solving that bilevel optimization would require many training runs.
+Star-LoRA instead defines an inexpensive deterministic approximation
+\begin{equation}
+  \pi(\mathcal{D}) = \phi(z(\mathcal{D})),
+\end{equation}
+where $z(\mathcal{D})$ is a vector of dataset statistics and $\phi$ is a bounded rule.
+
+\section{Design Hypotheses}
+
+\subsection{Dataset Size and Capacity}
+
+As $N$ increases, the learner observes more task evidence and can support more trainable capacity.
+The relationship should not be linear because increasing a dataset from 100 to 1,000 examples is
+usually more consequential than increasing it from 10,100 to 11,000. A logarithmic size factor is
+therefore used.
+
+\subsection{Distribution Quality}
+
+The raw sample count can be misleading. If one class dominates, many examples provide redundant
+label evidence. If a large fraction of tokens occurs only once, token-level estimates are sparse.
+If token frequencies are extremely skewed, frequent lexical patterns can dominate learning.
+Star-LoRA treats these properties as reasons to reduce rank and increase regularization.
+
+\subsection{Complexity}
+
+Normalized label entropy is high when classes are represented more evenly. For a binary dataset,
+this indicates that the model must meaningfully distinguish both classes rather than exploit a
+majority label. Input-embedding variance provides a rough model-dependent estimate of diversity in
+the input representations. Star-LoRA treats higher complexity as a reason to increase rank.
+
+\subsection{Adapter Surface}
+
+Rank controls capacity inside each selected matrix. The set of selected matrices controls where
+the model can adapt. Query and value projections are common LoRA targets. For complex or sparse
+data, Star-LoRA also permits key and output projections. For sufficiently large data with strong
+token-frequency skew, it additionally permits the gate, up, and down projections of the MLP.
+This policy increases expressive power but can be expensive.
+
+\section{Why a Pre-Training Policy?}
+
+A pre-training policy has three possible advantages. First, it provides task-conditioned defaults
+without a rank grid search. Second, it can regularize a very small dataset before noisy gradients
+are observed. Third, it produces an explicit explanation: a selected rank can be traced to
+measured statistics.
+
+It also has clear limitations. Dataset statistics are proxies, thresholds are handcrafted, and
+they do not measure actual validation performance. Two tasks with similar label and token
+statistics may require different model changes. The policy should therefore be evaluated as a
+useful prior, not as an oracle.
+
+\section{Stability as a Separate Question}
+
+The term ``stability-aware'' can refer to two different systems:
+\begin{enumerate}
+  \item a monitor that computes a stable importance score for analysis; or
+  \item an allocator that actually uses that score to make pruning decisions.
+\end{enumerate}
+The current repository implements the first system. PEFT's AdaLoRA implementation still performs
+the actual rank allocation. This distinction prevents the thesis from attributing performance
+improvements to an allocator that has not yet been implemented.

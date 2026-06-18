@@ -1,0 +1,109 @@
+\chapter{Implementation}
+\label{chap:implementation}
+
+\section{Software Structure}
+
+The prototype is implemented in Python with PyTorch, Hugging Face Transformers, Datasets,
+Evaluate, and PEFT. The repository is divided into the modules in \Cref{tab:software-files}.
+
+\begin{table}[H]
+\centering
+\caption{Main implementation files.}
+\label{tab:software-files}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+File & Responsibility \\
+\midrule
+\texttt{train.py} & Dataset loading, model construction, PEFT configuration, training, and evaluation.\\
+\texttt{dataset\_analyzer.py} & Label, token, and embedding statistics.\\
+\texttt{rank\_policy.py} & Size, distribution, complexity, and bounded rank functions.\\
+\texttt{stability\_callback.py} & Importance logging and calls to PEFT's AdaLoRA allocator.\\
+\texttt{run\_experiments.py} & Multi-method, multi-budget, multi-seed execution and aggregation.\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Dataset Loading and Preprocessing}
+
+The implementation loads a Hugging Face dataset and uses its training split for low-resource
+subsampling. If the requested budget is smaller than the full split, the training data is shuffled
+using the experiment seed and the first $N$ examples are selected. Evaluation uses the complete
+validation split when available. Different seeds therefore affect both model initialization and
+the selected low-resource subset.
+
+Inputs are tokenized with truncation at 256 tokens. Dynamic padding is applied per minibatch.
+For classification, the number of labels is inferred from the sampled training labels. This
+implementation path supports classification but does not yet handle GLUE regression tasks such as
+STS-B.
+
+\section{Model Construction}
+
+The default model is \qwenmodel, loaded as a sequence classifier. Qwen2.5 is a family of
+decoder-only language models released at multiple scales \citep{yang2024qwen25}. The 0.5B model
+keeps the undergraduate experiment computationally manageable while retaining modern Transformer
+attention and gated MLP projections.
+
+For standard LoRA and AdaLoRA, Qwen targets \texttt{q\_proj} and \texttt{v\_proj}. Star-LoRA
+computes the profile before attaching PEFT adapters. DistilBERT-style \texttt{q\_lin} and
+\texttt{v\_lin} names are recognized, although all reported experiments use Qwen.
+
+\section{Training Schedule}
+
+The estimated number of optimization steps is
+\begin{equation}
+  T = \left\lceil\frac{N}{B}\right\rceil E,
+\end{equation}
+where $B$ is batch size and $E$ is the number of epochs. For standard AdaLoRA, the implementation
+uses target rank 8, initial rank 12, initial and final schedule fractions of 0.1 and 0.5, and an
+allocation interval near $0.02T$. Star-LoRA uses initial and final fractions of 0.2 and 0.85 and
+an interval near $0.05T$.
+
+The allocation callback invokes PEFT's \texttt{update\_and\_allocate} after optimizer steps.
+The stability callback logs parameter scores before optimizer updates. The callbacks are separate:
+logged stable scores do not alter the PEFT allocation decision.
+
+\section{Recorded Artifacts}
+
+Each run records the method, rank settings, target modules, dataset statistics for dataset-aware
+runs, evaluation metrics, training metrics, random seed, model name, dataset name, and estimated
+steps. Per-step raw and stable importance values are written to a CSV file.
+
+One reproducibility limitation is that archived \texttt{experiment\_info.json} files do not store
+every command-line hyperparameter, notably learning rate. Folder names and experiment commands
+provide context, but future runs should serialize the complete argument dictionary, software
+versions, hardware identity, and git commit.
+
+\section{LLM-Assisted Prototype}
+
+An experimental branch supplied dataset statistics and model structure to an external LLM and
+requested a layer-wise target-module map. The Claude artifacts record
+\texttt{layerwise\_policy\_source = claude} and preserve the returned map. The selected global
+target rank remains 9 with initial rank 18 in the reported 5,000-example runs; the LLM primarily
+changes module placement rather than replacing the numeric rank formula.
+
+The Gemini-labeled pilot directories require special handling. Their metadata records an HTTP 429
+quota failure, a null Gemini response, and \texttt{layerwise\_policy\_source = heuristic}. They
+therefore duplicate the heuristic policy and cannot be treated as evidence about Gemini's
+allocation quality.
+
+\section{Reproducibility Status}
+
+\begin{table}[H]
+\centering
+\caption{Reproducibility status of the current prototype.}
+\label{tab:repro-checklist}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+Item & Status \\
+\midrule
+Model and dataset & Stored in each experiment metadata file.\\
+Sample budget and seed & Stored and included in output directory names.\\
+Rank and target modules & Stored for each PEFT run.\\
+Metrics and runtime & Stored and aggregated into CSV summaries.\\
+Full CLI arguments & Partial; learning rate is not serialized in old artifacts.\\
+Package versions & Not stored in the current artifacts.\\
+Hardware identity & Not stored in the current artifacts.\\
+LLM response provenance & Stored for Claude; failed Gemini requests and fallback are stored.\\
+\bottomrule
+\end{tabularx}
+\end{table}
